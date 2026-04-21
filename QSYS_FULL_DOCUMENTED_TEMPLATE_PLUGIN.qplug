@@ -1,0 +1,1487 @@
+-- ============================================================
+-- Q-SYS PLUGIN FULL DOCUMENTED TEMPLATE
+-- ============================================================
+-- Author:       Raúl de Val Bordás
+-- Date:         YYYY-MM
+-- Version:      1.0.0
+-- License: MIT License - Copyright (c) 2025 - RAUL DE VAL BORDAS
+--
+-- SOURCES:
+--   [1] q-syshelp.qsc.com/DeveloperHelp (official QSC documentation)
+--   [2] github.com/q-sys-community/q-sys-plugin-guide
+--   [3] github.com/qsys-plugins/ExamplePlugin
+--   [4] github.com/gdyr/qsys-plugin-docs
+--   [5] github.com/callumbrieske/Q-Sys-Advanced-UCI-Controller
+-- ============================================================
+
+
+-- ============================================================
+-- GLOBAL CONSTANTS
+-- Defined here to be accessible across all functions
+-- ============================================================
+
+-- Plugin color palette (RGB, range 0-255)
+Colors = {
+  Plugin      = { 60,  60,  60  },  -- Plugin block color in schematic
+  Background  = { 30,  30,  30  },  -- Dark background
+  Group       = { 50,  50,  50  },  -- GroupBox fill
+  Text        = { 255, 255, 255 },  -- White text
+  Accent      = { 0,   150, 255 },  -- Blue accent
+  Alert       = { 255, 80,  0   },  -- Orange alert
+  Green       = { 0,   200, 80  },  -- LED green ON
+  Off         = { 20,  20,  20  },  -- LED / button OFF
+}
+
+-- Plugin pages (defined globally to be accessible in GetControls and GetControlLayout)
+-- NOTE: If pages are added conditionally inside GetPages(), the PageNames array must
+-- be fully rebuilt inside GetControls() and GetControlLayout() as well, using a
+-- helper function. Changes made in GetPages() do not carry over to other functions.
+PageNames = { "Control", "Setup" }
+
+-- ── BASE64 EMBEDDED IMAGES ────────────────────────────────────────────────────
+-- Images are stored as base64 strings in global variables so they can be used
+-- on any page inside GetControlLayout().
+--
+-- +-----------------------------------------------------------------------------+
+-- | METHOD 1 - WITH PLUGIN COMPILER (recommended for modular development)       |
+-- |                                                                             |
+-- | The QSC Plugin Compiler (VS Code + Basic Plugin Framework) can encode       |
+-- | image files automatically at compile time.                                  |
+-- | Supported formats: .png  .jpg  .jpeg  .svg                                 |
+-- |                                                                             |
+-- | Syntax for PNG / JPG / JPEG:                                                |
+-- |   ImageLogo = "--[[ #encode "assets/logo.png" ]]"                          |
+-- |                                                                             |
+-- | Syntax for SVG (can also be done inline):                                   |
+-- |   ImageSVG  = "--[[ #encode "assets/icon.svg" ]]"                          |
+-- |                                                                             |
+-- | The compiler replaces the directive with the resulting base64 string        |
+-- | when building the final .qplug file.                                        |
+-- | Reference: q-syshelp.qsc.com -> Developer Help -> Plugin Compiler          |
+-- +-----------------------------------------------------------------------------+
+--
+-- +-----------------------------------------------------------------------------+
+-- | METHOD 2 - WITHOUT COMPILER (editing the .qplug file directly)              |
+-- |                                                                             |
+-- | Convert the image to base64 using any external tool:                        |
+-- |   - https://base64.guru/converter/encode/image                              |
+-- |   - PowerShell: [Convert]::ToBase64String([IO.File]::ReadAllBytes("img"))  |
+-- |   - Python: base64.b64encode(open("img.png","rb").read()).decode()          |
+-- |                                                                             |
+-- | Paste the resulting string directly into the variable.                      |
+-- +-----------------------------------------------------------------------------+
+--
+-- IMPORTANT NOTES:
+--   - Type = "Image" -> for PNG, JPG, JPEG  (does NOT support SVG)
+--   - Type = "Svg"   -> exclusively for SVG
+--   - SVG scales without quality loss and is recommended for icons and logos.
+--   - The Image field accepts only a pure base64 string, without prefixes
+--     such as "data:image/png;base64," -- only the encoded data.
+--   - Position {0,0} = top-left corner of the plugin.
+--   - A negative ZOrder places the image behind controls.
+
+-- Embedded PNG/JPG image (replace the string with the actual base64 data)
+-- With compiler:    ImageLogo = "--[[ #encode "assets/logo.png" ]]"
+-- Without compiler: paste the base64 string directly
+ImageLogo = ""   -- PNG/JPG base64 string here
+
+-- Embedded SVG image
+-- With compiler:    ImageSVG = "--[[ #encode "assets/icon.svg" ]]"
+-- Without compiler: paste the SVG base64 string directly
+ImageSVG  = ""   -- SVG base64 string here
+
+
+-- ============================================================
+-- PLUGIN INFO BLOCK (required)
+-- ============================================================
+--[[ FULL REFERENCE FOR PluginInfo:
+  Name         String   REQUIRED   Name shown in the Schematic Library.
+                                   Use ~ for subfolders: "Folder~SubFolder~Name"
+  Version      String   REQUIRED   Visible version string. A change allows users to upgrade.
+  Id           String   REQUIRED   Unique plugin identifier. Must not conflict with other
+                                   installed plugins. Generate at: guidgenerator.com
+                                   Can be a standard GUID or any unique string.
+  BuildVersion String   Optional   Internal code iteration tracking (e.g. "1.0.0.4")
+  Author       String   Optional   Author name or contact info
+  Description  String   Optional   Brief description. Shown when a version mismatch occurs.
+  Manufacturer String   Optional   Manufacturer of the integrated device
+  Model        String   Optional   Model name of the integrated device
+  IsManaged    Boolean  Optional   If true, adds plugin to the design managed inventory
+  ShowDebug    Boolean  Optional   If true, shows the Lua debug window in the UI
+  Type         Reflect  Optional   Reflect reporting type (advanced use)
+]]--
+PluginInfo = {
+  Name         = "My~Plugin",
+  Version      = "1.0",
+  BuildVersion = "1.0.0.0",
+  Id           = "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx",
+  Author       = "Your_Company",
+  Description  = "Plugin description. Shown when a version mismatch occurs.",
+  Manufacturer = "Manufacturer_Name",
+  Model        = "Model_Name",
+  IsManaged    = false,
+}
+
+
+-- ============================================================
+-- PLUGIN BLOCK COLOR IN SCHEMATIC (required)
+-- Returns { R, G, B } or { R, G, B, Alpha } -- range 0-255
+-- ============================================================
+function GetColor(props)
+  return Colors.Plugin
+end
+
+
+-- ============================================================
+-- NAME DISPLAYED WHEN DRAGGED INTO SCHEMATIC (required)
+-- ============================================================
+function GetPrettyName(props)
+  return PluginInfo.Name .. " v" .. PluginInfo.Version
+end
+
+
+-- ============================================================
+-- PLUGIN PAGES (optional)
+-- Allows splitting the UI into tabs. Each entry requires { name = "..." }
+-- NOTE: PageNames can be modified here to conditionally add pages based on
+-- properties, but that change does NOT propagate to GetControls/GetControlLayout.
+-- Those functions must rebuild the array from scratch.
+-- ============================================================
+function GetPages(props)
+  local pages = {}
+  for ix, _ in ipairs(PageNames) do
+    table.insert(pages, { name = PageNames[ix] })
+  end
+  return pages
+end
+
+
+-- ============================================================
+-- PLUGIN MODEL (optional)
+-- Allows the plugin to support multiple device models
+-- ============================================================
+function GetModel(props)
+  local model = {}
+  if props.Model ~= nil and props.Model.Value ~= "" then
+    table.insert(model, { props.Model.Value })
+  else
+    table.insert(model, { "Base Model" })
+  end
+  return model
+end
+
+
+-- ============================================================
+-- USER-CONFIGURABLE PROPERTIES (must return a table)
+-- Appear in the Properties panel of Q-SYS Designer before running.
+-- ============================================================
+--[[ FULL PROPERTY REFERENCE:
+  Fields per property:
+    Name        String   REQUIRED   Name shown in the Properties panel
+    Type        String   REQUIRED   Data type. Options:
+                                     "string"  -> Free text string
+                                     "integer" -> Integer number (requires Min and Max)
+                                     "double"  -> Double-precision float (requires Min and Max)
+                                     "boolean" -> ComboBox "Yes"/"No". Returns true/false at runtime
+                                     "enum"    -> ComboBox of strings defined in Choices
+    Value       Varies   REQUIRED   Default value (type depends on Type)
+    Choices     Table    Optional   For "enum" only. List of strings. e.g. {"A","B","C"}
+                                   To leave blank by default, add "" as the first item.
+    Min         Number   Optional   Lower bound (integer / double)
+    Max         Number   Optional   Upper bound (integer / double)
+    Header      String   Optional   Section header label (requires QDS 9.10+)
+    Comment     String   Optional   Comment shown below the property (requires QDS 9.10+)
+    Description String   Optional   Brief description of the property
+    IsHidden    Boolean  Optional   Show/hide the property in RectifyProperties()
+]]--
+function GetProperties()
+  local props = {}
+
+  -- CODE PIN: enabled/disabled by the user in the Properties panel
+  -- At runtime, props["Enable Code Pin"].Value returns true or false.
+  -- When changed, RectifyProperties() triggers a reload of GetControls()
+  -- and GetControlLayout(), which read this value to include or exclude
+  -- the "code" control.
+  table.insert(props, {
+    Name  = "Enable Code Pin",
+    Type  = "boolean",
+    Value = false,
+  })
+
+  -- Enum property (dropdown list)
+  table.insert(props, {
+    Name    = "Debug Print",
+    Type    = "enum",
+    Choices = { "None", "Tx/Rx", "Tx", "Rx", "Function Calls", "All" },
+    Value   = "None"
+  })
+
+  -- Integer property (integer number with range)
+  table.insert(props, {
+    Name  = "Channel Count",
+    Type  = "integer",
+    Min   = 1,
+    Max   = 32,
+    Value = 8
+  })
+
+  -- Double property (floating point with range)
+  table.insert(props, {
+    Name  = "Reference Level",
+    Type  = "double",
+    Min   = -20.0,
+    Max   = 20.0,
+    Value = 0.0
+  })
+
+  -- Boolean property (Yes/No)
+  table.insert(props, {
+    Name  = "Show Setup",
+    Type  = "boolean",
+    Value = true
+  })
+
+  -- String property (free text)
+  table.insert(props, {
+    Name  = "IP Address",
+    Type  = "string",
+    Value = "192.168.1.100"
+  })
+
+  return props
+end
+
+
+-- ============================================================
+-- RECTIFY PROPERTIES (optional)
+-- Runs every time the user changes a property.
+-- Allows conditionally showing or hiding other properties.
+-- ============================================================
+--[[ REFERENCE:
+  props["Name"].IsHidden = true | false  -> Show/hide property
+  props["Name"].Value                    -> Read current value
+  Always return props at the end.
+]]--
+function RectifyProperties(props)
+  -- The "Enable Code Pin" property does not require hiding anything here.
+  -- RectifyProperties is the point where Q-SYS Designer reloads
+  -- GetControls() and GetControlLayout() when a change is detected.
+  -- It is sufficient for the value to be in props for both functions
+  -- to read it on their next call.
+
+  -- Hide "Debug Print" if debug is disabled
+  if props["Debug Print"] ~= nil then
+    props["Debug Print"].IsHidden = false
+  end
+  -- Hide "IP Address" if Show Setup is false
+  if props["Show Setup"] ~= nil then
+    props["IP Address"].IsHidden = not props["Show Setup"].Value
+  end
+  return props
+end
+
+
+-- ============================================================
+-- AUDIO / SERIAL PINS (optional)
+-- Adds pins to the plugin block that are NOT linked to controls.
+-- For control-linked pins, define PinStyle inside GetControls().
+-- NOTE: Only audio or serial pins can be added with this function.
+-- ============================================================
+--[[ FULL PIN REFERENCE:
+  Name       String   REQUIRED   Pin name
+  Direction  String   REQUIRED   "input" | "output"
+  Domain     String   Optional   Pin type. Default is audio.
+                                  Use "serial" for serial pins (RS-232/RS-485)
+]]--
+function GetPins(props)
+  local pins = {}
+
+  -- Audio input pin
+  table.insert(pins, {
+    Name      = "Audio Input",
+    Direction = "input",
+  })
+
+  -- Audio output pin
+  table.insert(pins, {
+    Name      = "Audio Output",
+    Direction = "output",
+  })
+
+  -- Serial communication pin
+  table.insert(pins, {
+    Name      = "Serial Port",
+    Direction = "output",
+    Domain    = "serial",
+  })
+
+  return pins
+end
+
+
+-- ============================================================
+-- EMBEDDED COMPONENTS (optional)
+-- Allows embedding Q-SYS components inside the plugin.
+--
+-- OFFICIAL SOURCE: q-syshelp.qsc.com -> Developer Help -> Embedded Components
+--
+-- GENERAL RULES:
+--   - Name: no spaces. Becomes a global variable accessible at runtime.
+--   - Type: exact component type string (see catalog below).
+--   - Properties: key-value pairs using the component's Lua property names.
+--   - At runtime: access directly by name (e.g. main_mixer["input.1.gain"].Value)
+--   - Use Tools > View Component Controls Info in QDS to find the exact
+--     control and pin names for any component.
+--
+-- WARNINGS:
+--   - Inventory components CANNOT be embedded.
+--   - Control, USB, Mediacast, and Dataport pins are NOT supported.
+--   - Only audio and serial pins are supported.
+--   - Some components have design-level limits that add to the project total
+--     and may cause non-obvious compile failures:
+--     e.g. audio_file_recorder2 -> max 1 instance, 4 channels.
+--          audio_file_player   -> max 32 total channels in design.
+--
+-- =====================================================================
+-- FULL EMBEDDED COMPONENT CATALOG (source: qsyshelp.qsc.com)
+-- =====================================================================
+--
+-- ── AUDIO: PLAYERS ────────────────────────────────────────────────────
+--  Type                       QDS Name                    Key Lua Properties
+--  "audio_file_player"        Audio Player                n_channels(int,1-128), b_playlist(bool), player_name(str)
+--  "binloop"                  Bin Loop                    n_channels(int,0-128)
+--  "loop_player"              Loop Player                 n_channels(int,1-128), io_config(int,0-4), frame_rate(float)
+--  "audio_file_recorder2"     Audio Recorder [WARNING: MAX 4ch]  n_channels(int,1-4)
+--  "mda_player"               MDA Player                  n_channels(int,1-128), file_source(int,0-1)
+--
+-- ── AUDIO: CINEMA / CROSSFADE ─────────────────────────────────────────
+--  "active_matrix_surround_decoder"  Active Matrix Surround Decoder  (no properties)
+--  "pink_cinema"              Cinema Pink Noise           multi_channel_type(int,1-3), multi_channel_count(int,2-256)
+--  "crossfader"               Crossfader                  multi_channel_type(int,1-3), multi_channel_count(int,2-256)
+--
+-- ── AUDIO: SIGNAL PROCESSING ──────────────────────────────────────────
+--  "crossover"                Crossover                   n_bands(int,2-6), max_slope(int), multi_channel_type, multi_channel_count
+--  "delay"                    Delay                       n_taps(int,1-512), max_delay(float,0.001-60), delay_type(int,0-2), multi_channel_type, multi_channel_count
+--  "gain"                     Gain                        max_gain(int,-100-20), min_gain(int,-100-20), multi_channel_type, multi_channel_count
+--  "ramp"                     Gain Ramp                   multi_channel_type(int,1-3), multi_channel_count(int,2-256)
+--  "system_mute"              System Mute                 (no properties)
+--
+-- ── AUDIO: DYNAMICS ───────────────────────────────────────────────────
+--  "leveler"                  Automatic Gain Control      b_has_sidechain(bool), detector_time(float), multi_channel_type, multi_channel_count
+--  "compressor"               Compressor                  b_has_sidechain(bool), detector_time(float), multi_channel_type, multi_channel_count
+--  "expander"                 Expander                    b_has_sidechain(bool), detector_time(float), multi_channel_type, multi_channel_count
+--  "gate"                     Gate                        b_has_sidechain(bool), detector_time(float), multi_channel_type, multi_channel_count
+--  "limiter_peak"             Peak Limiter                b_has_sidechain(bool), detector_time(float), multi_channel_type, multi_channel_count
+--  "priority_ducker"          Priority Ducker             n_channels(int,1-512), detector_time(float)
+--  "ambient_compensator_continuous_2"  Continuous Ambient Compensator  subsample_factor(int), microphone_filter(bool)
+--  "ambient_compensator_gated_2"       Gated Ambient Compensator       microphone_filter(bool)
+--
+-- ── AUDIO: EFFECTS ────────────────────────────────────────────────────
+--  "effect_autopan"           Auto-Pan Effect             io_config(int,0-1)
+--  "effect_chorus"            Chorus Effect               io_config(int,0-2), max_delay(float)
+--  "effect_delay"             Delay Effect                io_config(int,0-2), max_delay(float,0.001-60)
+--  "effect_flange"            Flanger Effect              io_config(int,0-2), max_delay(float)
+--  "effect_pitch"             Pitch Shifter               io_config(int,0-2), max_delay(float,1-100ms)
+--  "effect_reverb"            Reverb Effect               io_config(int,0-1), reverb_type(int,0-1)
+--  "effect_tremolo"           Tremolo Effect              io_config(int,0-2)
+--
+-- ── AUDIO: EQUALIZERS AND FILTERS ─────────────────────────────────────
+--  "equalizer_parametric"     Parametric EQ               n_bands(int,1-32), bandwidth_q_factor(int,0-2), multi_channel_type, multi_channel_count
+--  "equalizer_parametric_flattop"  Flattop Parametric EQ  n_bands(int,1-32), multi_channel_type, multi_channel_count
+--  "equalizer_graphic"        Graphic EQ                  n_bands(int,6/11/16/31/61), multi_channel_type, multi_channel_count
+--  "equalizer_graphic_flattop" Flattop Graphic EQ         n_bands(int,6/11/16/31/61), multi_channel_type, multi_channel_count
+--  "equalizer_shelving_dual"  Dual-Shelf EQ               filter_slope(int,6/12), multi_channel_type, multi_channel_count
+--  "equalizer_shelving_high"  High-Shelf EQ               filter_slope(int,6/12), multi_channel_type, multi_channel_count
+--  "equalizer_shelving_low"   Low-Shelf EQ                filter_slope(int,6/12), multi_channel_type, multi_channel_count
+--  "filter_allpass"           All-Pass Filter             filter_order(int,1-2), multi_channel_type, multi_channel_count
+--  "filter_bandpass"          Band-Pass Filter            multi_channel_type, multi_channel_count
+--  "filter_bandstop"          Band-Stop Filter            multi_channel_type, multi_channel_count
+--  "filter_highpass"          High-Pass Filter            max_slope(int,12-96), multi_channel_type, multi_channel_count
+--  "filter_lowpass"           Low-Pass Filter             max_slope(int,12-96), multi_channel_type, multi_channel_count
+--  "filter_notch"             Notch Filter                multi_channel_type, multi_channel_count
+--  "filter_weighting"         Weighting Filter            type(int,1-2), multi_channel_type, multi_channel_count
+--  "filter_fir"               FIR Custom Filter [WARNING] n_taps(int,4-16384), multi_channel_type, multi_channel_count
+--  "filter_IIR"               IIR Custom Filter [WARNING] n_sections(int,1-256), multi_channel_type, multi_channel_count
+--  "filter_highpass_fir"      FIR High-Pass Filter        bandwidth(float), attenuation(int), phase_type(int,0-1), multi_channel_type, multi_channel_count
+--  "filter_lowpass_fir"       FIR Low-Pass Filter         bandwidth(float), attenuation(int), phase_type(int,0-1), multi_channel_type, multi_channel_count
+--  "feedback_canceler_notch"  Notch Feedback Controller   max_filter_count(int,8-32)
+--
+-- ── AUDIO: MIXERS AND MATRICES ────────────────────────────────────────
+--  "mixer"                    Matrix Mixer [WARNING: MAX 512x512]  n_inputs(int,1-512), n_outputs(int,1-512),
+--                                                                   n_stereo_inputs(int), n_stereo_outputs(int),
+--                                                                   n_cues(int,0-511), n_vca_groups(int,0-16)
+--  "delay_matrix"             Delay Matrix Mixer          n_inputs(int,1-512), n_outputs(int,1-512), max_delay(float), multi_channel_type
+--  "auto_mixer"               Gain-Sharing Auto Mic Mixer n_channels(int,2-512), output_choice(int,1-3)
+--  "auto_mixer_gated"         Gating Auto Mic Mixer (Legacy)  n_channels(int,2-512), output_choice(int,1-3)
+--  "auto_mixer_gating_adaptive" Gating Auto Mic Mixer     n_channels(int,2-512), output_choice(int,1-3)
+--  "room_combiner"            Room Combiner               n_rooms(int,2-256), n_walls(int,1-256), multi_channel_type(int,1-2), n_bgm(int,0-32)
+--  "router_with_output"       Router                      n_inputs(int,1-1024), n_outputs(int,1-1024), multi_channel_type, multi_channel_count
+--  "signal_presence"          Signal Presence             multi_channel_type(int,1-3), multi_channel_count(int,2-256)
+--
+-- ── AUDIO: METERS ─────────────────────────────────────────────────────
+--  "meter2"                   Level Meter                 meter_type(int,1-3), multi_channel_type, multi_channel_count
+--  "meter_LKFS"               LKFS Meter (BETA)           n_channels(int,1/2/3/5/7)
+--  "meter_SPL"                SPL/Leq Meter               meter_type(int,1-2), type(int,1-3), level_offset(int)
+--
+-- ── AUDIO: TEST AND MEASUREMENT ───────────────────────────────────────
+--  "pink"                     Pink Noise Generator        multi_channel_type, multi_channel_count
+--  "white"                    White Noise Generator       multi_channel_type, multi_channel_count
+--  "sine"                     Sine Generator              multi_channel_type, multi_channel_count
+--  "io_monitor"               IO Monitor                  (no properties)
+--  "responsalyzer"            Responsalyzer               n_bands(int), n_bins(int,512-65536)
+--  "rta_bandpass"             RTA Band-Pass               n_bands(int,11/31/61/121/241)
+--
+-- ── AUDIO: TIMECODE ───────────────────────────────────────────────────
+--  "linear_timecode_encoder"  SMPTE LTC Generator         (no properties)
+--  "linear_timecode_decoder"  SMPTE LTC Reader            (no properties)
+--
+-- ── CONTROL ───────────────────────────────────────────────────────────
+--  "sun"                      Astronomical Clock          (no properties)
+--  "blinker"                  Blinking LED                io_assignment(int,0=Core / 1=I/O Frame) [NOTE: only Core supported as embedded]
+--  "color_picker"             Color Picker                color_picker_size(int,160-512)
+--  "contact_list"             Contact List                (no properties)
+--  "custom_controls"          Custom Controls             type_1..10(int,0-21), count_1..10(int,1-256)
+--  "date_time"                Date/Time                   (no properties)
+--  "email"                    E-mailer                    (no properties)
+--  "event_log"                Event Log                   (no properties)
+--  "event_logger"             Event Logger                Args(int,0-16)
+--  "flip_flop"                Flip-Flop                   (no properties)
+--  "gps_info"                 GPS Info                    (no properties)
+--  "control_lfo"              LFO                         lfo_type(int,0-2)
+--  "pinpad_2"                 PIN Pad                     n_pins(int,0-16)
+--  "press_n_hold"             Press and Hold              (no properties)
+--  "selector"                 Selector                    num_sel(int,2-64)
+--  "uci_layer_controller"     UCI Layer Controller        uci(str), page(str), is_shared(bool)
+--  "uci_style_controller"     UCI Style Controller        uci(str)
+--  "stepper"                  Value Stepper               control_type(int,0/1/3), gain_mode(int,0-1), num_steps(int,3-100)
+--
+-- ── MONITORING ────────────────────────────────────────────────────────
+--  "ping"                     Ping                        (no properties)
+--  "snmp_query"               SNMP Query                  snmp_num_oid(int,1-16), snmp_version(int,0-1)
+--
+-- NOTE on multi_channel_type / multi_channel_count (common to many components):
+--   multi_channel_type: 1=Mono, 2=Stereo, 3=Multi-channel
+--   multi_channel_count: number of channels (only if multi_channel_type=3), range 2-256
+-- =====================================================================
+--]]
+function GetComponents(props)
+  local components = {}
+
+  -- Example 1: Matrix Mixer (most common in audio plugins)
+  table.insert(components, {
+    Name = "main_mixer",
+    Type = "mixer",
+    Properties = {
+      ["n_inputs"]  = 8,
+      ["n_outputs"] = 1,
+    }
+  })
+
+  -- Example 2: Signal presence detector (mono)
+  table.insert(components, {
+    Name = "signal_detector",
+    Type = "signal_presence",
+    Properties = {
+      ["multi_channel_type"] = 1,  -- 1=Mono
+    }
+  })
+
+  -- Example 3: Multichannel gain
+  -- table.insert(components, {
+  --   Name = "gain_control",
+  --   Type = "gain",
+  --   Properties = {
+  --     ["max_gain"]           = 20,
+  --     ["min_gain"]           = -100,
+  --     ["multi_channel_type"] = 1,
+  --   }
+  -- })
+
+  -- Example 4: Crossfader array (via loop with unique names)
+  -- At runtime, access via: XFader1["crossfade.to.B"].Boolean = true
+  -- for x = 1, (props["Channel Count"].Value) do
+  --   table.insert(components, {
+  --     Name = "XFader" .. x,
+  --     Type = "crossfader",
+  --     Properties = {
+  --       ["multi_channel_type"]  = 1,
+  --       ["multi_channel_count"] = 8,
+  --     }
+  --   })
+  -- end
+
+  return components
+end
+
+
+-- ============================================================
+-- INTERNAL WIRING (optional)
+-- Connects plugin pins to embedded component pins.
+-- Each entry is a table: { source, destination1, destination2, ... }
+-- RESTRICTIONS:
+--   - A plugin input pin can connect to multiple component input pins
+--   - A component input pin can only receive from ONE plugin input pin
+--   - A component output pin can connect to multiple plugin output pins
+--   - A plugin output pin can only receive from ONE component output pin
+-- ============================================================
+function GetWiring(props)
+  local wiring = {}
+
+  -- Plugin input pin -> Mixer input
+  table.insert(wiring, { "Audio Input", "main_mixer Input 1" })
+
+  -- Mixer output -> Plugin output pin
+  table.insert(wiring, { "main_mixer Output 1", "Audio Output" })
+
+  -- Fan-out: one source pin to multiple destinations in a single entry
+  -- table.insert(wiring, { "Audio Output", "main_mixer Output 1", "main_mixer Output 2" })
+
+  return wiring
+end
+
+
+-- ============================================================
+-- PLUGIN CONTROLS (must return a table)
+-- Controls are persistent data objects stored within the design.
+-- They are bound to the UI and to pins.
+-- ============================================================
+--[[
+  =====================================================================
+  FULL REFERENCE FOR GetControls()
+  =====================================================================
+
+  COMMON PROPERTIES FOR ALL CONTROLS:
+  +-----------------+----------+-----------+--------------------------------------------------+
+  | Property        | Type     | Required  | Description                                      |
+  +-----------------+----------+-----------+--------------------------------------------------+
+  | Name            | String   | YES       | Control name (no spaces recommended)             |
+  | ControlType     | String   | YES       | "Button" | "Knob" | "Indicator" | "Text"         |
+  | Count           | Integer  | No        | Number of controls. If > 1 -> array              |
+  |                 |          |           | Runtime access: Controls.Name[i]                 |
+  | PinStyle        | String   | No        | "Input" | "Output" | "Both" | "None"             |
+  | UserPin         | Boolean  | No        | If true -> pin visible under "Control Pins"      |
+  | DefaultValue    | Varies   | No        | Initial value (Boolean / number / string)         |
+  +-----------------+----------+-----------+--------------------------------------------------+
+
+  NOTE on Count > 1:
+    - If Count = 3 and Name = "Button", the controls are named:
+      "Button 1", "Button 2", "Button 3"
+    - In layout they are referenced the same way: layout["Button 1"] = { ... }
+    - At runtime: Controls.Button[1], Controls.Button[2], Controls.Button[3]
+
+  NOTE on PinStyle vs UserPin:
+    - UserPin = true  + PinStyle defined  -> User can choose whether to show the pin
+    - UserPin = false + PinStyle defined  -> Pin is always visible (no option to hide it)
+    - UserPin = false + no PinStyle       -> No external pin
+
+  -------------------------------------------------------------------
+  TYPE: Button
+  -------------------------------------------------------------------
+  Exclusive properties:
+  +-------------+---------+-----------+----------------------------------------------------+
+  | ButtonType  | String  | YES       | "Momentary"    -> Active while held down           |
+  |             |         |           | "Toggle"       -> Alternates between on/off         |
+  |             |         |           | "Trigger"      -> Single event pulse               |
+  |             |         |           | "StateTrigger" -> Multiple states (needs Min/Max)  |
+  | Icon        | String  | No        | QDS icon name ("Power","skull", etc.)              |
+  |             |         |           | or path to local file (requires Plugin Compiler)   |
+  | IconType    | String  | Cond.     | REQUIRED if Icon is defined.                       |
+  |             |         |           | "Icon" (default) | "Image" (PNG/JPG) | "SVG"       |
+  | Min         | Integer | Cond.     | REQUIRED if ButtonType = "StateTrigger"            |
+  | Max         | Integer | Cond.     | REQUIRED if ButtonType = "StateTrigger"            |
+  +-------------+---------+-----------+----------------------------------------------------+
+
+  -------------------------------------------------------------------
+  TYPE: Knob
+  -------------------------------------------------------------------
+  Exclusive properties:
+  +-------------+---------+-----------+----------------------------------------------------+
+  | ControlUnit | String  | YES       | Control unit. Options and ranges:                  |
+  |             |         |           | "dB"       -> Range: -100 to 20    (Min/Max req.)  |
+  |             |         |           | "Hz"       -> Range: 20 to 20000   (Min/Max req.)  |
+  |             |         |           | "Float"    -> Range: +-1000000000  (Min/Max req.)  |
+  |             |         |           | "Integer"  -> Range: +-999999999   (Min/Max req.)  |
+  |             |         |           | "Pan"      -> Fixed: -1 to 1       (Min/Max NOT req)|
+  |             |         |           | "Percent"  -> Range: 0 to 100      (Min/Max req.)  |
+  |             |         |           | "Position" -> Fixed: 0 to 1        (Min/Max NOT req)|
+  |             |         |           | "Seconds"  -> Range: 0 to 87400    (Min/Max req.)  |
+  | Min         | Number  | Cond.     | Lower bound (see table above)                      |
+  | Max         | Number  | Cond.     | Upper bound (see table above)                      |
+  +-------------+---------+-----------+----------------------------------------------------+
+
+  -------------------------------------------------------------------
+  TYPE: Indicator
+  -------------------------------------------------------------------
+  Exclusive properties:
+  +---------------+---------+-----------+--------------------------------------------------+
+  | IndicatorType | String  | YES       | "Led"    -> LED indicator (on/off)               |
+  |               |         |           | "Meter"  -> Level meter                          |
+  |               |         |           | "Text"   -> Read-only text indicator             |
+  |               |         |           | "Status" -> Q-SYS system status indicator        |
+  +---------------+---------+-----------+--------------------------------------------------+
+
+  -------------------------------------------------------------------
+  TYPE: Text
+  -------------------------------------------------------------------
+  No exclusive properties at control level.
+  The display type (TextBox, ComboBox, ListBox) is defined in GetControlLayout().
+  =====================================================================
+]]--
+function GetControls(props)
+  local ctrls = {}
+
+  -- Momentary Button
+  table.insert(ctrls, {
+    Name        = "SendButton",
+    ControlType = "Button",
+    ButtonType  = "Momentary",
+    Count       = 1,
+    PinStyle    = "Input",
+    UserPin     = true,
+    Icon        = "Power",        -- Q-SYS Designer icon name
+    IconType    = "Icon",         -- "Icon" | "Image" | "SVG"
+  })
+
+  -- Toggle Button
+  table.insert(ctrls, {
+    Name        = "MuteButton",
+    ControlType = "Button",
+    ButtonType  = "Toggle",
+    Count       = 1,
+    PinStyle    = "Both",
+    UserPin     = true,
+  })
+
+  -- Trigger Button
+  table.insert(ctrls, {
+    Name        = "ResetButton",
+    ControlType = "Button",
+    ButtonType  = "Trigger",
+    Count       = 1,
+    PinStyle    = "Input",
+    UserPin     = true,
+  })
+
+  -- StateTrigger Button (multiple states)
+  table.insert(ctrls, {
+    Name         = "SourceSelector",
+    ControlType  = "Button",
+    ButtonType   = "StateTrigger",
+    Min          = 0,              -- Minimum state (required for StateTrigger)
+    Max          = 3,              -- Maximum state (required for StateTrigger)
+    Count        = 1,
+    PinStyle     = "Both",
+    UserPin      = true,
+  })
+
+  -- Knob type dB
+  table.insert(ctrls, {
+    Name         = "InputGain",
+    ControlType  = "Knob",
+    ControlUnit  = "dB",
+    Min          = -100,
+    Max          = 20,
+    Count        = 1,
+    PinStyle     = "Both",
+    UserPin      = true,
+  })
+
+  -- Knob type Hz
+  table.insert(ctrls, {
+    Name         = "Frequency",
+    ControlType  = "Knob",
+    ControlUnit  = "Hz",
+    Min          = 20,
+    Max          = 20000,
+    Count        = 1,
+    PinStyle     = "Both",
+    UserPin      = true,
+  })
+
+  -- Knob type Percent
+  table.insert(ctrls, {
+    Name         = "Percentage",
+    ControlType  = "Knob",
+    ControlUnit  = "Percent",
+    Min          = 0,
+    Max          = 100,
+    Count        = 1,
+    PinStyle     = "Both",
+    UserPin      = true,
+  })
+
+  -- Knob type Integer
+  table.insert(ctrls, {
+    Name         = "IntegerValue",
+    ControlType  = "Knob",
+    ControlUnit  = "Integer",
+    Min          = 1,
+    Max          = 64,
+    Count        = 1,
+    PinStyle     = "Both",
+    UserPin      = true,
+  })
+
+  -- Knob type Float
+  table.insert(ctrls, {
+    Name         = "FloatValue",
+    ControlType  = "Knob",
+    ControlUnit  = "Float",
+    Min          = 0.0,
+    Max          = 1.0,
+    Count        = 1,
+    PinStyle     = "Both",
+    UserPin      = false,
+  })
+
+  -- Knob type Pan
+  table.insert(ctrls, {
+    Name         = "Pan",
+    ControlType  = "Knob",
+    ControlUnit  = "Pan",
+    -- Min/Max NOT required for Pan (fixed range -1 to 1)
+    Count        = 1,
+    PinStyle     = "Both",
+    UserPin      = true,
+  })
+
+  -- Knob type Position
+  table.insert(ctrls, {
+    Name         = "Position",
+    ControlType  = "Knob",
+    ControlUnit  = "Position",
+    -- Min/Max NOT required for Position (fixed range 0 to 1)
+    Count        = 1,
+    PinStyle     = "Both",
+    UserPin      = false,
+  })
+
+  -- Knob type Seconds
+  table.insert(ctrls, {
+    Name         = "DelayTime",
+    ControlType  = "Knob",
+    ControlUnit  = "Seconds",
+    Min          = 0,
+    Max          = 5,
+    Count        = 1,
+    PinStyle     = "Both",
+    UserPin      = true,
+  })
+
+  -- LED Indicator (array of 4 LEDs)
+  table.insert(ctrls, {
+    Name          = "StatusLed",
+    ControlType   = "Indicator",
+    IndicatorType = "Led",
+    Count         = 4,              -- Creates: "StatusLed 1" .. "StatusLed 4"
+    PinStyle      = "Output",
+    UserPin       = true,
+  })
+
+  -- Meter Indicator
+  table.insert(ctrls, {
+    Name          = "LevelMeter",
+    ControlType   = "Indicator",
+    IndicatorType = "Meter",
+    Count         = 1,
+    PinStyle      = "Input",
+    UserPin       = true,
+  })
+
+  -- Text Indicator (read-only)
+  table.insert(ctrls, {
+    Name          = "StatusText",
+    ControlType   = "Indicator",
+    IndicatorType = "Text",
+    Count         = 1,
+    PinStyle      = "Output",
+    UserPin       = true,
+  })
+
+  -- Status Indicator (Q-SYS system status)
+  table.insert(ctrls, {
+    Name          = "ConnectionStatus",
+    ControlType   = "Indicator",
+    IndicatorType = "Status",
+    Count         = 1,
+    PinStyle      = "Output",
+    UserPin       = true,
+  })
+
+  -- Text control (textbox / combo / list)
+  -- The display type is defined in GetControlLayout()
+  table.insert(ctrls, {
+    Name        = "TextBox",
+    ControlType = "Text",
+    Count       = 1,
+    PinStyle    = "Both",
+    UserPin     = true,
+  })
+
+  -- CODE PIN (external code injection at runtime)
+  -- Enabled from the Properties panel with "Enable Code Pin".
+  -- Allows connecting a Block Controller, Text Controller or other
+  -- external component to send Lua code to the plugin at runtime.
+  -- The external code runs AFTER the "if Controls then" block,
+  -- not as a replacement. See full behavior notes at the end of this file.
+  if props["Enable Code Pin"].Value then
+    table.insert(ctrls, {
+      Name        = "code",
+      ControlType = "Text",
+      Count       = 1,
+      PinStyle    = "Input",
+      UserPin     = true,
+    })
+  end
+
+  return ctrls
+end
+
+
+-- ============================================================
+-- CONTROL LAYOUT AND GRAPHICS (must return layout, graphics)
+-- Defines the visual appearance of the plugin in Q-SYS Designer.
+-- ============================================================
+--[[
+  =====================================================================
+  FULL REFERENCE FOR GetControlLayout()
+  =====================================================================
+
+  STRUCTURE:
+    layout["ControlName"] = { ... }          -> For controls defined in GetControls()
+    table.insert(graphics, { Type=..., ... }) -> For unbound graphic elements
+
+  IMPORTANT NOTES:
+    - If Count > 1 in GetControls(), controls are named "Name 1", "Name 2", etc.
+    - The "code" pin is typically assigned Style = "None" to hide it visually.
+    - Q-SYS manages Z-Order automatically. If ZOrder is used on any element,
+      it is recommended to use it on ALL elements to avoid unexpected behavior.
+
+  -------------------------------------------------------------------
+  COMMON PROPERTIES FOR ALL CONTROL LAYOUTS:
+  +--------------+----------+-----------+---------------------------------------------------+
+  | Position     | Table    | YES       | {x, y} in pixels from the top-left corner         |
+  | Size         | Table    | YES       | {width, height} in pixels                         |
+  | Style        | String   | YES       | "Fader" | "Knob" | "Button" | "Text" | "Meter"   |
+  |              |          |           | "Led" | "ListBox" | "ComboBox" | "Media" | "None" |
+  | PrettyName   | String   | No        | Alternate pin name. Use ~ for subfolders.         |
+  | Color        | Table    | No        | {R, G, B} or {R, G, B, Alpha}  (0-255)            |
+  | TextColor    | Table    | No        | {R, G, B} or {R, G, B, Alpha}  (0-255)            |
+  | StrokeColor  | Table    | No        | {R, G, B} or {R, G, B, Alpha}  default: {0,0,0}   |
+  | StrokeWidth  | Integer  | No        | Border thickness. Default: 1                      |
+  | Font         | String   | No        | See available fonts table below                   |
+  | FontSize     | Integer  | No        | Font size in points                               |
+  | FontStyle    | String   | No        | Depends on font. See fonts table.                 |
+  | IsBold       | Boolean  | No        | Equivalent to FontStyle = "Bold"                  |
+  | HTextAlign   | String   | No        | "Left" | "Center" | "Right"   default: "Center"   |
+  | VTextAlign   | String   | No        | "Top" | "Center" | "Bottom"   default: "Center"   |
+  | IsReadOnly   | Boolean  | No        | Not editable at runtime. Useful for status.        |
+  | Margin       | Integer  | No        | Control margin. Default: 0                        |
+  | Padding      | Integer  | No        | Control padding. Default: 1                       |
+  | ClassName    | String   | No        | Default CSS class name for UCI                    |
+  | ZOrder       | Integer  | No        | Z-axis position. Range: -2147483648 to 2147483647 |
+  +--------------+----------+-----------+---------------------------------------------------+
+
+  -------------------------------------------------------------------
+  EXCLUSIVE PROPERTIES: Button (Style = "Button")
+  +------------------+---------+-----------+-------------------------------------------------+
+  | ButtonStyle      | String  | YES       | "Toggle" | "Momentary" | "Trigger"             |
+  |                  |         |           | "StateTrigger" | "On" | "Off" | "Custom"        |
+  |                  |         |           | "On" and "Off" are equivalent to push-action    |
+  |                  |         |           | "Custom" = String-type button (see below)       |
+  | ButtonVisualStyle| String  | No        | "Flat" | "Gloss"   default: "Gloss"             |
+  | Legend           | String  | No        | Text displayed on the button                    |
+  | CornerRadius     | Integer | No        | Corner radius                                   |
+  | Radius           | Integer | No        | Alias for CornerRadius                          |
+  | CustomButtonUp   | String  | Cond.     | For ButtonStyle="Custom". Text in resting state.|
+  | CustomButtonDown | String  | Cond.     | For ButtonStyle="Custom". Text in active state. |
+  | OffColor         | Table   | No        | Color when OFF. Only if UnlinkOffColor = true    |
+  | UnlinkOffColor   | Boolean | No        | Allows different colors for ON and OFF states   |
+  | IconColor        | Table   | No        | {R, G, B, Alpha}. Icon color for the button     |
+  | WordWrap         | Boolean | No        | Legend text word wrap                           |
+  +------------------+---------+-----------+-------------------------------------------------+
+
+  -------------------------------------------------------------------
+  EXCLUSIVE PROPERTIES: Fader (Style = "Fader")
+  +--------------+---------+-----------+------------------------------------------------------+
+  | ShowTextbox  | Boolean | No        | Adds a text box showing the current value. Def: false |
+  +--------------+---------+-----------+------------------------------------------------------+
+
+  -------------------------------------------------------------------
+  EXCLUSIVE PROPERTIES: Meter (Style = "Meter")
+  +------------------+---------+-----------+-----------------------------------------------+
+  | MeterStyle       | String  | YES       | "Level" | "Reduction" | "Gain" | "Standard"   |
+  | BackgroundColor  | Table   | No        | {R, G, B, Alpha}. Meter background color       |
+  | ShowTextbox      | Boolean | No        | Adds a text box showing the current value.     |
+  |                  |         |           | Default: true                                  |
+  | CornerRadius     | Integer | No        | Corner radius                                  |
+  | Radius           | Integer | No        | Alias for CornerRadius                         |
+  +------------------+---------+-----------+-----------------------------------------------+
+
+  -------------------------------------------------------------------
+  EXCLUSIVE PROPERTIES: Text (Style = "Text")
+  +--------------+---------+-----------+--------------------------------------------------------+
+  | TextBoxStyle | String  | No        | "Normal" | "Meter" | "NoBackground"  default: "Normal" |
+  | WordWrap     | Boolean | No        | Text word wrap                                        |
+  | CornerRadius | Integer | No        | Corner radius                                         |
+  | Radius       | Integer | No        | Alias for CornerRadius                                |
+  +--------------+---------+-----------+--------------------------------------------------------+
+
+  -------------------------------------------------------------------
+  EXCLUSIVE PROPERTIES: Led (Style = "Led")
+  +------------------+---------+-----------+-----------------------------------------------+
+  | OffColor         | Table   | No        | Color in OFF state. Only if UnlinkOffColor = true|
+  | UnlinkOffColor   | Boolean | No        | Allows a different color for OFF state         |
+  | CornerRadius     | Integer | No        | Radius (8 = circle if Size = {16,16})          |
+  +------------------+---------+-----------+-----------------------------------------------+
+
+  -------------------------------------------------------------------
+  EXCLUSIVE PROPERTIES: ComboBox (Style = "ComboBox")
+  The control in GetControls() MUST be ControlType = "Text".
+  Displays a dropdown list. Options are assigned at runtime via:
+  Controls.ControlName.Choices = {"Option1","Option2"}
+  +------------------+---------+-----------+-----------------------------------------------+
+  | (no exclusive    |         |           | ComboBox has no exclusive layout properties.   |
+  |  layout          |         |           | Options are set at runtime with               |
+  |  properties)     |         |           | Controls.Name.Choices = {"A","B","C"}          |
+  +------------------+---------+-----------+-----------------------------------------------+
+
+  -------------------------------------------------------------------
+  EXCLUSIVE PROPERTIES: ListBox (Style = "ListBox")
+  The control in GetControls() MUST be ControlType = "Text".
+  Displays a visible selection list (no dropdown).
+  Options are also assigned at runtime with .Choices.
+  +------------------+---------+-----------+-----------------------------------------------+
+  | (no exclusive    |         |           | ListBox has no exclusive layout properties.    |
+  |  layout          |         |           | Options are set at runtime with               |
+  |  properties)     |         |           | Controls.Name.Choices = {"A","B","C"}          |
+  +------------------+---------+-----------+-----------------------------------------------+
+
+  -------------------------------------------------------------------
+  AVAILABLE FONTS (Font + FontStyle):
+  +--------------+-------------------------------------------------------------------------------+
+  | Adamina      | Regular                                                                       |
+  | Droid Sans   | Regular, Bold                                                                 |
+  | Lato         | Light, Light Italic, Regular, Italic, Bold, Bold Italic, Black, Black Italic  |
+  | Montserrat   | Thin, ExtraLight, Light, Regular, Medium, SemiBold, Bold, ExtraBold, Black    |
+  |              | (+ Italic variants of each)                                                   |
+  | Noto Serif   | Regular, Italic, Bold, BoldItalic                                             |
+  | Open Sans    | Light, Light Italic, Regular, Italic, Semibold, Semibold Italic,              |
+  |              | Bold, Bold Italic, Extrabold, Extrabold Italic                                |
+  | Poppins      | Light, Regular, Medium, SemiBold, Bold                                        |
+  | Roboto       | Thin, Light, Regular, Medium, Bold, Black (+ Italic variants)                 |
+  | Roboto Mono  | Thin, Light, Regular, Medium, Bold (+ Italic variants)                        |
+  | Roboto Slab  | Thin, Light, Regular, Bold                                                    |
+  | Slabo 27px   | Regular                                                                       |
+  +--------------+-------------------------------------------------------------------------------+
+
+  -------------------------------------------------------------------
+  GRAPHIC TYPES (table.insert into graphics):
+  +-------------+--------------------------------------------------------------------------------+
+  | "GroupBox"  | Grouping box. Properties: Text, Fill, StrokeColor, StrokeWidth,                |
+  |             | CornerRadius, Color (text), Font, FontSize, FontStyle, IsBold, HTextAlign      |
+  | "Label"     | Text label. Properties: Text, Color, Fill, Font, FontSize, FontStyle,          |
+  |             | IsBold, HTextAlign, VTextAlign, StrokeWidth, StrokeColor, CornerRadius,        |
+  |             | Margin, Padding                                                                |
+  | "Header"    | Header line. Properties: Text, Color, Font, FontSize,                          |
+  |             | FontStyle, IsBold, HTextAlign                                                  |
+  | "Image"     | JPG/PNG image (no SVG). Property: Image = "base64string"                       |
+  | "Svg"       | SVG image. Property: Image = "base64string"                                     |
+  +-------------+--------------------------------------------------------------------------------+
+
+  NOTE: The "Text" type does NOT exist as a graphic element. Use "Label" instead.
+  =====================================================================
+]]--
+function GetControlLayout(props)
+  local layout   = {}
+  local graphics = {}
+  local currentPage = PageNames[props["page_index"].Value]
+
+  -- "code" control (always hidden visually, Style = "None")
+  -- Only added if the "Enable Code Pin" property is active.
+  if props["Enable Code Pin"].Value then
+    layout["code"] = {
+      PrettyName = "Code",
+      Style      = "None",
+      Position   = { 0, 0 },
+      Size       = { 5, 5 },
+    }
+  end
+
+  -- ======================================================
+  -- PAGE: Control
+  -- ======================================================
+  if currentPage == "Control" then
+
+    -- Background (GroupBox as plugin background)
+    table.insert(graphics, {
+      Type        = "GroupBox",
+      Text        = "",             -- No title text
+      Fill        = Colors.Background,
+      StrokeColor = Colors.Background,
+      StrokeWidth = 1,
+      CornerRadius = 0,
+      Position    = { 0, 0 },
+      Size        = { 400, 500 },
+    })
+
+    -- Section header
+    table.insert(graphics, {
+      Type       = "Header",
+      Text       = "AUDIO CONTROL",
+      Color      = Colors.Text,
+      Font       = "Montserrat",
+      FontStyle  = "SemiBold",
+      FontSize   = 11,
+      HTextAlign = "Left",
+      Position   = { 5, 5 },
+      Size       = { 390, 18 },
+    })
+
+    -- Static label
+    table.insert(graphics, {
+      Type       = "Label",
+      Text       = "Gain:",
+      Color      = Colors.Text,
+      Font       = "Roboto",
+      FontStyle  = "Regular",
+      FontSize   = 10,
+      HTextAlign = "Right",
+      VTextAlign = "Center",
+      Fill       = { 0, 0, 0, 0 }, -- Transparent
+      StrokeWidth= 0,
+      Position   = { 5, 35 },
+      Size       = { 90, 16 },
+    })
+
+    -- GroupBox with visible border
+    table.insert(graphics, {
+      Type        = "GroupBox",
+      Text        = "Buttons",
+      Color       = Colors.Text,
+      Fill        = Colors.Group,
+      StrokeColor = Colors.Accent,
+      StrokeWidth = 1,
+      CornerRadius = 4,
+      Font        = "Roboto",
+      FontStyle   = "Regular",
+      FontSize    = 9,
+      HTextAlign  = "Left",
+      Position    = { 5, 60 },
+      Size        = { 390, 80 },
+    })
+
+    -- Momentary button
+    layout["SendButton"] = {
+      PrettyName        = "Actions~Send Command",
+      Style             = "Button",
+      ButtonStyle       = "Momentary",
+      ButtonVisualStyle = "Flat",
+      Legend            = "SEND",
+      Color             = Colors.Accent,
+      TextColor         = Colors.Text,
+      Font              = "Roboto",
+      FontStyle         = "Bold",
+      FontSize          = 10,
+      CornerRadius      = 3,
+      Position          = { 10, 75 },
+      Size              = { 80, 30 },
+    }
+
+    -- Toggle button with different ON/OFF colors
+    layout["MuteButton"] = {
+      PrettyName      = "Actions~Mute",
+      Style           = "Button",
+      ButtonStyle     = "Toggle",
+      Legend          = "MUTE",
+      Color           = Colors.Alert,      -- Color when ON
+      OffColor        = { 60, 60, 60 },    -- Color when OFF
+      UnlinkOffColor  = true,              -- Enables separate ON/OFF colors
+      TextColor       = Colors.Text,
+      CornerRadius    = 3,
+      Position        = { 100, 75 },
+      Size            = { 80, 30 },
+    }
+
+    -- Trigger button
+    layout["ResetButton"] = {
+      PrettyName  = "Actions~Reset",
+      Style       = "Button",
+      ButtonStyle = "Trigger",
+      Legend      = "RESET",
+      Color       = { 150, 0, 0 },
+      TextColor   = Colors.Text,
+      Position    = { 190, 75 },
+      Size        = { 80, 30 },
+    }
+
+    -- Custom button (custom ON/OFF text)
+    layout["SourceSelector"] = {
+      PrettyName        = "Actions~Source Selector",
+      Style             = "Button",
+      ButtonStyle       = "Custom",
+      CustomButtonUp    = "SOURCE A",     -- Text in resting state (OFF)
+      CustomButtonDown  = "SOURCE B",     -- Text in active state (ON)
+      Color             = Colors.Green,
+      OffColor          = { 80, 80, 80 },
+      UnlinkOffColor    = true,
+      CornerRadius      = 3,
+      Position          = { 280, 75 },
+      Size              = { 80, 30 },
+    }
+
+    -- Fader (slider control)
+    layout["InputGain"] = {
+      PrettyName  = "Audio~Input Gain",
+      Style       = "Fader",
+      ShowTextbox = true,           -- Shows the numeric value next to the fader
+      Color       = Colors.Accent,
+      Position    = { 10, 170 },
+      Size        = { 20, 120 },
+    }
+
+    -- Knob (rotary control)
+    layout["Frequency"] = {
+      PrettyName = "Audio~Frequency",
+      Style      = "Knob",
+      Color      = Colors.Accent,
+      Position   = { 50, 175 },
+      Size       = { 50, 50 },
+    }
+
+    -- Level meter
+    layout["LevelMeter"] = {
+      PrettyName       = "Audio~Signal Level",
+      Style            = "Meter",
+      MeterStyle       = "Level",    -- "Level" | "Reduction" | "Gain" | "Standard"
+      BackgroundColor  = { 20, 20, 20 },
+      ShowTextbox      = false,
+      CornerRadius     = 2,
+      Position         = { 120, 170 },
+      Size             = { 20, 120 },
+    }
+
+    -- LED indicator array ("StatusLed 1" .. "StatusLed 4")
+    for i = 1, 4 do
+      layout["StatusLed " .. i] = {
+        PrettyName     = "Status~LED " .. i,
+        Style          = "Led",
+        Color          = Colors.Green,
+        OffColor       = Colors.Off,
+        UnlinkOffColor = true,
+        CornerRadius   = 8,           -- Value equal to half width/height -> circle
+        Position       = { 160 + (i - 1) * 20, 175 },
+        Size           = { 16, 16 },
+      }
+    end
+
+    -- Read-only text indicator
+    layout["StatusText"] = {
+      PrettyName   = "Status~Status Text",
+      Style        = "Text",
+      IsReadOnly   = true,
+      TextBoxStyle = "NoBackground",  -- "Normal" | "Meter" | "NoBackground"
+      TextColor    = Colors.Text,
+      Font         = "Roboto Mono",
+      FontStyle    = "Regular",
+      FontSize     = 9,
+      HTextAlign   = "Left",
+      VTextAlign   = "Center",
+      Position     = { 200, 175 },
+      Size         = { 185, 16 },
+    }
+
+    -- System status indicator
+    layout["ConnectionStatus"] = {
+      PrettyName = "Status~Connection",
+      Style      = "Led",
+      Position   = { 200, 200 },
+      Size       = { 16, 16 },
+    }
+
+    -- Editable text box
+    layout["TextBox"] = {
+      PrettyName   = "Data~Editable Text",
+      Style        = "Text",
+      IsReadOnly   = false,
+      TextBoxStyle = "Normal",
+      Font         = "Roboto",
+      FontStyle    = "Regular",
+      FontSize     = 10,
+      HTextAlign   = "Left",
+      VTextAlign   = "Center",
+      Position     = { 200, 225 },
+      Size         = { 185, 20 },
+    }
+
+    -- ComboBox (dropdown list)
+    -- REQUIRED: the control in GetControls() must be ControlType = "Text"
+    -- Options are assigned at runtime with Controls.Name.Choices
+    layout["TextBox"] = {
+      PrettyName = "Data~ComboBox",
+      Style      = "ComboBox",       -- Dropdown list
+      Position   = { 200, 250 },
+      Size       = { 185, 20 },
+    }
+
+    -- ListBox (visible list without dropdown)
+    -- Also requires ControlType = "Text" in GetControls()
+    -- layout["TextBox"] = {
+    --   PrettyName = "Data~ListBox",
+    --   Style      = "ListBox",
+    --   Position   = { 200, 280 },
+    --   Size       = { 185, 60 },   -- Taller height to show multiple options
+    -- }
+
+    -- Percentage knob
+    layout["Percentage"] = {
+      PrettyName = "Audio~Percentage",
+      Style      = "Knob",
+      Color      = Colors.Accent,
+      Position   = { 230, 175 },
+      Size       = { 50, 50 },
+    }
+
+    -- Pan knob
+    layout["Pan"] = {
+      PrettyName = "Audio~Pan",
+      Style      = "Knob",
+      Color      = { 200, 180, 0 },
+      Position   = { 290, 175 },
+      Size       = { 50, 50 },
+    }
+
+    -- Delay time knob
+    layout["DelayTime"] = {
+      PrettyName = "Audio~Delay Time (s)",
+      Style      = "Knob",
+      Color      = { 0, 180, 150 },
+      Position   = { 350, 175 },
+      Size       = { 40, 40 },
+    }
+
+  -- ======================================================
+  -- PAGE: Setup
+  -- ======================================================
+  elseif currentPage == "Setup" then
+
+    -- Setup page background
+    table.insert(graphics, {
+      Type        = "GroupBox",
+      Text        = "",
+      Fill        = Colors.Background,
+      StrokeColor = Colors.Background,
+      StrokeWidth = 0,
+      Position    = { 0, 0 },
+      Size        = { 400, 500 },
+    })
+
+    table.insert(graphics, {
+      Type       = "Header",
+      Text       = "CONFIGURATION",
+      Color      = Colors.Text,
+      Font       = "Montserrat",
+      FontStyle  = "SemiBold",
+      FontSize   = 11,
+      HTextAlign = "Left",
+      Position   = { 5, 5 },
+      Size       = { 390, 18 },
+    })
+
+    -- Controls from the Control page are not shown here.
+    -- Add setup-specific controls below as needed.
+
+    -- Embedded PNG/JPG image
+    -- Only rendered if ImageLogo contains a valid base64 string.
+    if ImageLogo ~= "" then
+      table.insert(graphics, {
+        Type     = "Image",        -- For PNG, JPG, JPEG
+        Image    = ImageLogo,      -- Pure base64 string (no data:... prefix)
+        Position = { 5, 30 },
+        Size     = { 100, 30 },    -- Adjust to the actual image size
+        -- ZOrder = -1,            -- Optional: place behind controls
+      })
+    end
+
+    -- Embedded SVG image
+    -- SVG scales without quality loss: ideal for logos and icons.
+    if ImageSVG ~= "" then
+      table.insert(graphics, {
+        Type     = "Svg",          -- Exclusively for SVG (not PNG/JPG)
+        Image    = ImageSVG,       -- SVG base64 string
+        Position = { 5, 70 },
+        Size     = { 40, 40 },
+      })
+    end
+
+  end -- end if currentPage
+
+  return layout, graphics
+end
+
+
+-- ============================================================
+-- RUNTIME LOGIC
+-- Only executed when the plugin is loaded into a Core or emulated.
+-- Keep this section as simple as possible.
+--
+-- ── CONTROL ACCESS AT RUNTIME ────────────────────────────────────────
+-- Controls defined in GetControls() are accessible via the global
+-- Controls table. Available properties:
+--
+--   Controls.ControlName.Value       -> Number (control position, 0.0-1.0 or per ControlUnit)
+--   Controls.ControlName.String      -> String (value as text)
+--   Controls.ControlName.Boolean     -> Boolean (true if Value > 0)
+--   Controls.ControlName.Position    -> Number (normalized position 0.0-1.0)
+--   Controls.ControlName.Color       -> Color string (e.g. "green", "#FF0000")
+--   Controls.ControlName.Legend      -> String (button text at runtime)
+--   Controls.ControlName.Choices     -> Table (ComboBox/ListBox options)
+--   Controls.ControlName.IsDisabled  -> Boolean (disable the control)
+--   Controls.ControlName.IsInvisible -> Boolean (hide the control)
+--   Controls.ControlName.RampTime    -> Number in seconds (ramp time)
+--   Controls.ControlName.EventHandler = function(ctrl) ... end
+--
+-- For controls with Count > 1 (arrays), access by index (1-based):
+--   Controls.ControlName[1].Value
+--   Controls.ControlName[2].Boolean
+--
+-- ── PROPERTY ACCESS AT RUNTIME ───────────────────────────────────────
+-- Properties defined in GetProperties() are accessible via the global
+-- Properties table (read-only at runtime):
+--
+--   Properties["Property Name"].Value  -> Current value (string/number/bool)
+--   Properties["Property Name"].Name   -> Property name
+--
+-- ── EMBEDDED COMPONENT ACCESS AT RUNTIME ─────────────────────────────
+-- Components defined in GetComponents() are registered as global
+-- variables and are accessible directly by name at runtime.
+--
+-- CASE 1 - Fixed name (single component):
+--   The name assigned in GetComponents() is directly a global variable.
+--   Access without _G, like any Lua variable:
+--
+--   main_mixer["input.1.gain"].Value = -10
+--   XFader1["crossfade.to.B"].Boolean = true
+--
+-- CASE 2 - Dynamic names (components created in a loop):
+--   When multiple components are created in GetComponents() by
+--   concatenating strings to the name (e.g. "XFader"..x), at runtime
+--   it is not possible to resolve that name as a direct variable.
+--   In that case _G is REQUIRED to build the name dynamically
+--   and collect them into a local table to work with:
+--
+--   local XFaders = {}
+--   for i = 1, 8 do
+--     table.insert(XFaders, _G["XFader" .. i])
+--   end
+--   XFaders[1]["crossfade.to.B"].Boolean = true
+--
+-- NOTE: Use Tools > View Component Controls Info in QDS to obtain
+--   the exact control names for each component.
+--
+-- ── TIMER ─────────────────────────────────────────────────────────────
+-- Q-SYS provides its own Timer object. Do NOT use native Lua time
+-- functions (os.time, etc.) as they do not work correctly on the Core.
+--
+-- IMPORTANT: Do NOT declare Timers with "local". The Lua garbage
+--     collector may remove them while still in use, silently stopping
+--     them. Always declare Timers in global scope.
+--
+-- METHOD 1 - Simple timer (CallAfter): executes a function ONCE
+-- after the specified delay. No :Stop() needed.
+--   Timer.CallAfter(function() ... end, seconds)
+--
+-- METHOD 2 - Named timer: repeats indefinitely until :Stop() is called.
+--   myTimer = Timer.New()              -- Create (global scope, no "local")
+--   myTimer.EventHandler = function()  -- Function to run on each cycle
+--     ...
+--   end
+--   myTimer:Start(seconds)             -- Start (accepts decimals, e.g. 0.5)
+--   myTimer:Stop()                     -- Stop
+--   myTimer:IsRunning()                -- Returns true if currently active
+--
+-- METHOD 3 - Timer.Now(): returns seconds since epoch.
+--   Useful for calculating elapsed time between two moments.
+--   NOTE: The value differs between Emulation mode (Windows) and Core mode.
+--
+-- ── DEBUG OUTPUT BEHAVIOR ────────────────────────────────────────────
+-- NOTE: The first time any EventHandler fires, Q-SYS Designer reprints
+--     the ENTIRE accumulated history in the Debug Output since script
+--     startup, and then appends the new event line with its real
+--     timestamp (offset by the time elapsed since startup).
+--     This does NOT indicate double execution of the code. It is
+--     normal behavior of the Q-SYS debug viewer.
+--
+-- ── CODE PIN BEHAVIOR ────────────────────────────────────────────────
+-- NOTE: The CODE PIN does NOT overwrite this block. The external code
+--     runs AFTER the code in this block, in the same runtime context.
+--     Execution order is:
+--
+--       1. All code in this "if Controls then" block
+--       2. All code received via the CODE PIN
+--
+-- WARNING - IMPORTANT CONSEQUENCES:
+--
+--     a) DIRECT CALLS AND INITIALIZATIONS:
+--        If this block executes a direct function call (e.g. fnc()),
+--        it will ALWAYS run with the original version, even if the
+--        CODE PIN redefines that function afterwards.
+--        Result: the initialization runs TWICE -- first with the
+--        original function, then with the redefined one from the CODE PIN.
+--        Avoid direct calls in this block if using the CODE PIN.
+--
+--     b) EVENT HANDLERS:
+--        If the CODE PIN redefines an EventHandler already defined here,
+--        the new definition OVERWRITES the previous one. Only the
+--        external handler will execute, since the redefinition happens
+--        before any user event arrives.
+--        This is the safest and most predictable use of the CODE PIN.
+--
+--     c) CODE PIN PERSISTENCE:
+--        Injected code persists in memory even if the pin is
+--        disconnected or execution is stopped and restarted.
+--        To clear it, explicitly send nil or an empty string ("")
+--        through the pin.
+-- ============================================================
+if Controls then
+
+  -- Example: basic EventHandler
+  Controls.SendButton.EventHandler = function(ctrl)
+    if ctrl.Boolean then
+      print("SendButton pressed")
+    end
+  end
+
+  -- Example: read and write control values
+  Controls.InputGain.EventHandler = function(ctrl)
+    print("Gain: " .. tostring(ctrl.Value) .. " dB")
+  end
+
+  -- Example: simple timer (single execution)
+  -- Timer.CallAfter(function()
+  --   print("Executed 2 seconds after startup")
+  -- end, 2)
+
+  -- Example: repeating timer (polling every 5 seconds)
+  -- tmrPoll = Timer.New()           -- No "local": global scope
+  -- tmrPoll.EventHandler = function()
+  --   print("Poll: " .. tostring(Timer.Now()))
+  -- end
+  -- tmrPoll:Start(5)
+
+  -- Example: assign options to a ComboBox at runtime
+  -- Controls.TextBox.Choices = { "Option A", "Option B", "Option C" }
+  -- Controls.TextBox.String  = "Option A"   -- Default selection
+
+  -- Example: embedded component access (direct name)
+  -- main_mixer["input.1.gain"].Value = -10
+  -- XFader1["crossfade.to.B"].Boolean = true
+
+  -- Example: embedded components created in a loop (via _G)
+  -- local XFaders = {}
+  -- for i = 1, 8 do
+  --   table.insert(XFaders, _G["XFader" .. i])
+  -- end
+  -- XFaders[1]["crossfade.to.B"].Boolean = true
+
+end
