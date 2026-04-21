@@ -2,7 +2,7 @@
 -- Q-SYS PLUGIN FULL DOCUMENTED TEMPLATE
 -- ============================================================
 -- Author:       Raúl de Val Bordás
--- Date:         YYYY-MM
+-- Date:         2026-04
 -- Version:      1.0.0
 -- License: MIT License - Copyright (c) 2025 - RAUL DE VAL BORDAS
 --
@@ -440,7 +440,56 @@ end
 --  "blinker"                  Blinking LED                io_assignment(int,0=Core / 1=I/O Frame) [NOTE: only Core supported as embedded]
 --  "color_picker"             Color Picker                color_picker_size(int,160-512)
 --  "contact_list"             Contact List                (no properties)
---  "custom_controls"          Custom Controls             type_1..10(int,0-21), count_1..10(int,1-256)
+--  "custom_controls"          Custom Controls             See full reference below
+--
+--    CUSTOM CONTROLS - FULL REFERENCE
+--    (source: q-syshelp.qsc.com -> Developer Help -> Embedded Components)
+--
+--    custom_controls is the most flexible embedded component. It allows creating
+--    up to 10 independent control slots (1..10), each with its own type and count.
+--    It is the recommended way to store persistent internal values (e.g. secrets,
+--    tokens, state) without exposing extra controls to the user.
+--    See "STORING SECRETS" pattern in the runtime section at the end of this file.
+--
+--    Properties per slot (n = slot index 1..10):
+--      type_n          integer   Control type (see table below). Default: 0 (None)
+--      count_n         integer   Number of controls in this slot. Range: 1-256
+--      range_custom_n  boolean   Enable custom range. Default: false
+--      range_minimum_n integer   Minimum value (only if range_custom_n = true)
+--      range_maximum_n integer   Maximum value (only if range_custom_n = true)
+--
+--    Control type values and their runtime names:
+--    +-------+------------------------------+------------------+--------+---------------+
+--    | type  | Control Name                 | Control Name     | Custom | Custom        |
+--    | value | (QDS Label)                  | (runtime .name)  | Range? | Range Limits  |
+--    +-------+------------------------------+------------------+--------+---------------+
+--    |  0    | None                         | -                | No     |               |
+--    |  1    | Level fader w/taper (dB)     | fader.n          | No     | -100 to 20    |
+--    |  2    | Level knob (dB)              | level.n          | Yes    | -100 to 100   |
+--    |  3    | Frequency knob (Hz)          | frequency.n      | Yes    | 0.1 to 20000  |
+--    |  4    | Time knob (seconds)          | time.n           | Yes    | 0 to 86400    |
+--    |  5    | Generic float knob           | float.n          | Yes    | +-1000000000  |
+--    |  6    | Generic integer knob         | integer.n        | Yes    | +-16777216    |
+--    |  7    | Mute button                  | mute.n           | No     |               |
+--    |  8    | Toggle button                | toggle.n         | No     |               |
+--    |  9    | Trigger button               | trigger.n        | No     |               |
+--    | 10    | Percent knob                 | percent.n        | No     | 0 to 100      |
+--    | 11    | Position knob                | position.n       | No     | 0 to 1        |
+--    | 12    | Pan knob                     | pan.n            | No     | -1 to 1       |
+--    | 13    | Text edit                    | text.n           | No     |               |
+--    | 14    | Text display (read-only)     | text.display.n   | No     |               |
+--    | 15    | LED                          | led.n            | No     |               |
+--    | 16    | Meter                        | meter.n          | No     | -120 to 20    |
+--    | 17    | Momentary button             | momentary.n      | No     |               |
+--    | 18    | Distance knob (meters)       | distance.n       | Yes    | 0 to 999      |
+--    | 19    | Status display               | status.n         | No     |               |
+--    | 20    | Hexadecimal knob             | hexadecimal.n    | Yes    | 0-24 / 0xFFFF |
+--    | 21    | Time knob (alt)              | time.n           | Yes    | 0 to 86399    |
+--    +-------+------------------------------+------------------+--------+---------------+
+--
+--    NOTE: "n" in runtime names is the 1-based index within the slot count.
+--    Example: type_1=13, count_1=3 creates text.1, text.2, text.3
+--    Access: SecretStorage["text.1"].String = "value"
 --  "date_time"                Date/Time                   (no properties)
 --  "email"                    E-mailer                    (no properties)
 --  "event_log"                Event Log                   (no properties)
@@ -1483,5 +1532,47 @@ if Controls then
   --   table.insert(XFaders, _G["XFader" .. i])
   -- end
   -- XFaders[1]["crossfade.to.B"].Boolean = true
+
+  -- ── STORING SECRETS PATTERN ───────────────────────────────────────
+  -- Source: q-syshelp.qsc.com -> Developer Help -> Storing Secrets in Plugins
+  --
+  -- Use case: store passwords, API keys or tokens persistently inside the plugin
+  -- without exposing them to the user through visible controls.
+  --
+  -- Best practice: store the secret in a custom_controls embedded component
+  -- (type_1 = 13 = Text Edit). Its value is:
+  --   - Retained as part of the design state across script restarts
+  --   - Only accessible by the plugin that embeds it (not visible externally)
+  --   - Not shown in any control pin
+  --
+  -- STEP 1: Add the storage component in GetComponents():
+  --   table.insert(components, {
+  --     Name = "SecretStorage",
+  --     Type = "custom_controls",
+  --     Properties = {
+  --       type_1  = 13,  -- Text Edit (type 13)
+  --       count_1 = 1    -- One slot -> control name: text.1
+  --                      -- Use count_1 = 2 for two secrets: text.1, text.2
+  --     }
+  --   })
+  --
+  -- STEP 2: Create an alias and use it in runtime:
+  --   MySecret = SecretStorage["text.1"]   -- alias for the storage control
+  --   MySecret.String = "the_secret_value" -- write
+  --   print(MySecret.String)               -- read
+  --
+  -- STEP 3: Obfuscate the input field after the user types the secret.
+  -- Use gsub to replace all characters with * in the visible control,
+  -- while the real value stays stored in SecretStorage:
+  --   Controls.SecretEntry.EventHandler = function(ctrl)
+  --     MySecret.String = ctrl.String          -- store the real value
+  --     ctrl.String = ctrl.String:gsub(".", "*") -- show only asterisks
+  --   end
+  --
+  -- STEP 4: On script start, show asterisks if a secret is already stored:
+  --   function Initialize()
+  --     Controls.SecretEntry.String = MySecret.String:gsub(".", "*")
+  --   end
+  --   Initialize()
 
 end
