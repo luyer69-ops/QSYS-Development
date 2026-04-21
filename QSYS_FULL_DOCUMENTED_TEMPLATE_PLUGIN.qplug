@@ -107,7 +107,7 @@ ImageSVG  = ""   -- SVG base64 string here
   Manufacturer String   Optional   Manufacturer of the integrated device
   Model        String   Optional   Model name of the integrated device
   IsManaged    Boolean  Optional   If true, adds plugin to the design managed inventory
-  ShowDebug    Boolean  Optional   If true, shows the Lua debug window in the UI
+  ## ShowDebug    Boolean  Optional   If true, shows the Lua debug window in the UI -- DEPRECATED after confirmation by Eugene Dunn
   Type         Reflect  Optional   Reflect reporting type (advanced use)
 ]]--
 PluginInfo = {
