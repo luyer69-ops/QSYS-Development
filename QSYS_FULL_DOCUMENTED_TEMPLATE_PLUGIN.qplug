@@ -174,21 +174,13 @@ end
 -- ============================================================
 function BuildPageNames(props)
   -- Start with a fresh local table on every call.
-  -- NEVER use table.insert on a persistent global here -- it would
-  -- accumulate duplicates each time Q-SYS calls this function.
   local pages = { "Control", "Setup" }  -- base pages: always present
-
-  -- Example: conditionally add "Advanced" page based on a boolean Property.
+  -- Example: conditionally add "Advanced Page" based on a boolean Property.
   -- The Property "Show Advanced Page" must be defined in GetProperties().
   -- Uncomment and adapt the block below to add conditional pages:
-  --
   -- if props["Show Advanced Page"].Value then
   --   table.insert(pages, "Advanced")  -- appended after base pages
   -- end
-
-  -- Return the complete, freshly built page list.
-  -- The caller (GetPages, GetControls, GetControlLayout) is responsible
-  -- for using this list as the source of truth for page names.
   return pages
 end
 
@@ -196,10 +188,6 @@ end
 -- ============================================================
 -- PLUGIN PAGES (optional)
 -- Allows splitting the UI into tabs. Each entry requires { name = "..." }
--- ============================================================
--- NOTE: Do NOT modify the global PageNames array inside GetPages() to add
--- dynamic pages -- changes do not propagate to GetControls/GetControlLayout.
--- Use BuildPageNames(props) instead, which is called from all three functions.
 -- ============================================================
 function GetPages(props)
   -- Rebuild the complete page list from scratch using the helper.
@@ -209,7 +197,6 @@ function GetPages(props)
   local allPages = BuildPageNames(props)
 
   -- Convert the plain string array into the table format required
-  -- by Q-SYS: each entry must be a table with a "name" key.
   local pages = {}
   for _, name in ipairs(allPages) do
     table.insert(pages, { name = name })  -- { name = "Control" }, etc.
