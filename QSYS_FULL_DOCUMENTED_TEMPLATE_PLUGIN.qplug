@@ -1,10 +1,9 @@
 -- ============================================================
--- Q-SYS PLUGIN FULL DOCUMENTED TEMPLATE
+-- Q-SYS PLUGIN PREMIUM TEMPLATE
 -- ============================================================
--- Author:       Raúl de Val Bordás
--- Date:         2026-04
+-- Author:       Your_Company
+-- Date:         YYYY-MM
 -- Version:      1.0.0
--- License: MIT License - Copyright (c) 2025 - RAUL DE VAL BORDAS
 --
 -- SOURCES:
 --   [1] q-syshelp.qsc.com/DeveloperHelp (official QSC documentation)
@@ -107,14 +106,14 @@ ImageSVG  = ""   -- SVG base64 string here
   Manufacturer String   Optional   Manufacturer of the integrated device
   Model        String   Optional   Model name of the integrated device
   IsManaged    Boolean  Optional   If true, adds plugin to the design managed inventory
-  ## ShowDebug    Boolean  Optional   If true, shows the Lua debug window in the UI -- DEPRECATED after confirmation by Eugene Dunn
+  ShowDebug    Boolean  Optional   If true, shows the Lua debug window in the UI
   Type         Reflect  Optional   Reflect reporting type (advanced use)
 ]]--
 PluginInfo = {
   Name         = "My~Plugin",
   Version      = "1.0",
   BuildVersion = "1.0.0.0",
-  Id           = "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx", -- You can use "New-Guid" on PowerShell to get an unic ID
+  Id           = "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx",
   Author       = "Your_Company",
   Description  = "Plugin description. Shown when a version mismatch occurs.",
   Manufacturer = "Manufacturer_Name",
@@ -153,21 +152,6 @@ function GetPages(props)
     table.insert(pages, { name = PageNames[ix] })
   end
   return pages
-end
-
-
--- ============================================================
--- PLUGIN MODEL (optional)
--- Allows the plugin to support multiple device models
--- ============================================================
-function GetModel(props)
-  local model = {}
-  if props.Model ~= nil and props.Model.Value ~= "" then
-    table.insert(model, { props.Model.Value })
-  else
-    table.insert(model, { "Base Model" })
-  end
-  return model
 end
 
 
@@ -645,18 +629,28 @@ end
   -------------------------------------------------------------------
   Exclusive properties:
   +-------------+---------+-----------+----------------------------------------------------+
-  | ControlUnit | String  | YES       | Control unit. Options and ranges:                  |
-  |             |         |           | "dB"       -> Range: -100 to 20    (Min/Max req.)  |
-  |             |         |           | "Hz"       -> Range: 20 to 20000   (Min/Max req.)  |
-  |             |         |           | "Float"    -> Range: +-1000000000  (Min/Max req.)  |
-  |             |         |           | "Integer"  -> Range: +-999999999   (Min/Max req.)  |
-  |             |         |           | "Pan"      -> Fixed: -1 to 1       (Min/Max NOT req)|
-  |             |         |           | "Percent"  -> Range: 0 to 100      (Min/Max req.)  |
-  |             |         |           | "Position" -> Fixed: 0 to 1        (Min/Max NOT req)|
-  |             |         |           | "Seconds"  -> Range: 0 to 87400    (Min/Max req.)  |
-  | Min         | Number  | Cond.     | Lower bound (see table above)                      |
-  | Max         | Number  | Cond.     | Upper bound (see table above)                      |
+  | ControlUnit | String  | YES       | Unit of the control. See ranges table below.       |
+  | Min         | Number  | Cond.     | Lower bound. Required unless marked NOT req.       |
+  | Max         | Number  | Cond.     | Upper bound. Required unless marked NOT req.       |
   +-------------+---------+-----------+----------------------------------------------------+
+
+  Knob-Specific Ranges (source: q-syshelp.qsc.com -> Reserved Functions -> Knob-Specific Ranges):
+  +--------------+------------------+------------------+---------------+---------------+----------+
+  | ControlUnit  | Lower Limit      | Upper Limit      | Default Min   | Default Max   | Min/Max  |
+  |              |                  |                  |               |               | Required |
+  +--------------+------------------+------------------+---------------+---------------+----------+
+  | "dB"         | -100             | 20               | -100          | 20            | Yes      |
+  | "Hz"         | 20               | 20000            | 20            | 20000         | Yes      |
+  | "Float"      | -1,000,000,000   | 1,000,000,000    | 0             | 100           | Yes      |
+  | "Integer"    | -999,999,999     | 999,999,999      | 1             | 100           | Yes      |
+  | "Pan"        | -1               | 1                | -1            | 1             | No       |
+  | "Percent"    | 0                | 100              | 0             | 100           | Yes      |
+  | "Position"   | 0                | 1                | 0             | 1             | No       |
+  | "Seconds"    | 0                | 87400            | 0             | 1             | Yes      |
+  +--------------+------------------+------------------+---------------+---------------+----------+
+  NOTE: Default Min/Max are the values used when Min/Max are not specified. For units
+  where Min/Max are required (Yes), the defaults only apply if the developer omits them
+  accidentally -- always specify Min/Max explicitly for required units.
 
   -------------------------------------------------------------------
   TYPE: Indicator
@@ -981,8 +975,9 @@ end
   +------------------+---------+-----------+-----------------------------------------------+
   | OffColor         | Table   | No        | Color in OFF state. Only if UnlinkOffColor = true|
   | UnlinkOffColor   | Boolean | No        | Allows a different color for OFF state         |
-  | CornerRadius     | Integer | No        | Radius (8 = circle if Size = {16,16})          |
   +------------------+---------+-----------+-----------------------------------------------+
+  NOTE: CornerRadius is NOT officially documented for Led by QSC. It may work in
+  practice but should not be relied upon as a supported property.
 
   -------------------------------------------------------------------
   EXCLUSIVE PROPERTIES: ComboBox (Style = "ComboBox")
@@ -1218,7 +1213,6 @@ function GetControlLayout(props)
         Color          = Colors.Green,
         OffColor       = Colors.Off,
         UnlinkOffColor = true,
-        CornerRadius   = 8,           -- Value equal to half width/height -> circle
         Position       = { 160 + (i - 1) * 20, 175 },
         Size           = { 16, 16 },
       }
@@ -1491,6 +1485,120 @@ end
 --        disconnected or execution is stopped and restarted.
 --        To clear it, explicitly send nil or an empty string ("")
 --        through the pin.
+-- ── QSC RECOMMENDED RUNTIME ARCHITECTURE ────────────────────────────
+-- Source: q-syshelp.qsc.com -> Reserved Functions -> Runtime
+--
+-- The following are common functions found in QSC-authored plugins.
+-- They are NOT required but represent QSC's recommended architecture
+-- pattern for communication plugins (TCP, Serial, etc.).
+-- For a working example see the TCPSocket example in the official docs.
+--
+-- SetupDebugPrint()
+--   Sets flags based on the "Debug Print" property selected before
+--   running. Controls which print() messages go to the debug window.
+--   Typically reads Properties["Debug Print"].Value and sets booleans
+--   such as bDebugTx, bDebugRx, bDebugFn, etc.
+--
+-- Initialization()
+--   Called once when the plugin starts. Used to initialize controls,
+--   set default values, create aliases for components and controls,
+--   and prepare the plugin state before any events arrive.
+--
+-- Connect()
+--   Sets flags or triggers other functions once the connection to the
+--   device has been established. Called from the socket Connected handler.
+--
+-- Disconnected()
+--   Resets flags or triggers other functions when the connection is
+--   disrupted. Called from the socket Closed/Error handler.
+--
+-- ClearVariables()
+--   Flushes controls, variables, tables and flags when the connection
+--   is disrupted or reset. Typically called from Disconnected().
+--
+-- GetDeviceInfo()
+--   Initial data exchange with the device after connection.
+--   Used to request static data (e.g. firmware version, serial number).
+--   Called from Connect() after the connection is established.
+--
+-- PollDevice()
+--   Requests data that needs to be polled periodically for changes.
+--   Called at regular intervals via a Timer to maintain connection
+--   health and verify the device is still reachable.
+--
+-- Send(cmd)
+--   Sends data over the socket. Centralizes all outgoing communication
+--   in one place, making it easy to add debug logging or pre-processing.
+--
+-- ParseResponse(data)
+--   Handles data received over the socket. Determines the context of
+--   the incoming data and dispatches to more specific handler functions.
+--   Called from the socket Data handler.
+--
+-- RECOMMENDED SKELETON FOR COMMUNICATION PLUGINS:
+--
+--   function SetupDebugPrint()
+--     bDebugTx = Properties["Debug Print"].Value == "Tx/Rx" or
+--                Properties["Debug Print"].Value == "Tx" or
+--                Properties["Debug Print"].Value == "All"
+--     bDebugRx = Properties["Debug Print"].Value == "Tx/Rx" or
+--                Properties["Debug Print"].Value == "Rx" or
+--                Properties["Debug Print"].Value == "All"
+--   end
+--
+--   function ClearVariables()
+--     Controls.ConnectionStatus.Value = 2  -- Fault
+--     Controls.ConnectionStatus.String = "Disconnected"
+--   end
+--
+--   function Disconnected()
+--     ClearVariables()
+--   end
+--
+--   function Connect()
+--     Controls.ConnectionStatus.Value = 0  -- OK
+--     Controls.ConnectionStatus.String = "Connected"
+--     GetDeviceInfo()
+--   end
+--
+--   function GetDeviceInfo()
+--     Send("GET /version\r\n")
+--   end
+--
+--   function PollDevice()
+--     Send("GET /status\r\n")
+--   end
+--
+--   function Send(cmd)
+--     if bDebugTx then print("Tx: " .. cmd) end
+--     sock:Write(cmd)
+--   end
+--
+--   function ParseResponse(data)
+--     if bDebugRx then print("Rx: " .. data) end
+--     -- dispatch to specific handlers based on data content
+--   end
+--
+--   function Initialization()
+--     SetupDebugPrint()
+--     ClearVariables()
+--     sock = TcpSocket.New()
+--     sock.EventHandler = function(s, evt, err)
+--       if evt == TcpSocket.Events.Connected then
+--         Connect()
+--       elseif evt == TcpSocket.Events.Data then
+--         ParseResponse(s:Read(s.BufferLength))
+--       elseif evt == TcpSocket.Events.Closed or
+--              evt == TcpSocket.Events.Error then
+--         Disconnected()
+--       end
+--     end
+--     sock:Connect(Controls.IPAddress.String,
+--                  Controls.Port.Value)
+--   end
+--
+--   Initialization()
+--
 -- ============================================================
 if Controls then
 
@@ -1574,5 +1682,4 @@ if Controls then
   --     Controls.SecretEntry.String = MySecret.String:gsub(".", "*")
   --   end
   --   Initialize()
-
 end
