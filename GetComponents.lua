@@ -1,0 +1,242 @@
+-- ============================================================
+-- EMBEDDED COMPONENTS (optional)
+-- Allows embedding Q-SYS components inside the plugin.
+--
+-- OFFICIAL SOURCE: q-syshelp.qsc.com -> Developer Help -> Embedded Components
+--
+-- GENERAL RULES:
+--   - Name: no spaces. Becomes a global variable accessible at runtime.
+--   - Type: exact component type string (see catalog below).
+--   - Properties: key-value pairs using the component's Lua property names.
+--   - At runtime: access directly by name (e.g. main_mixer["input.1.gain"].Value)
+--   - Use Tools > View Component Controls Info in QDS to find the exact
+--     control and pin names for any component.
+--
+-- WARNINGS:
+--   - Inventory components CANNOT be embedded.
+--   - Control, USB, Mediacast, and Dataport pins are NOT supported.
+--   - Only audio and serial pins are supported.
+--   - Some components have design-level limits that add to the project total
+--     and may cause non-obvious compile failures:
+--     e.g. audio_file_recorder2 -> max 1 instance, 4 channels.
+--          audio_file_player   -> max 32 total channels in design.
+--
+-- =====================================================================
+-- FULL EMBEDDED COMPONENT CATALOG (source: qsyshelp.qsc.com)
+-- =====================================================================
+--
+-- ── AUDIO: PLAYERS ────────────────────────────────────────────────────
+--  Type                       QDS Name                    Key Lua Properties
+--  "audio_file_player"        Audio Player                n_channels(int,1-128), b_playlist(bool), player_name(str)
+--  "binloop"                  Bin Loop                    n_channels(int,0-128)
+--  "loop_player"              Loop Player                 n_channels(int,1-128), io_config(int,0-4), frame_rate(float)
+--  "audio_file_recorder2"     Audio Recorder [WARNING: MAX 4ch]  n_channels(int,1-4)
+--  "mda_player"               MDA Player                  n_channels(int,1-128), file_source(int,0-1)
+--
+-- ── AUDIO: CINEMA / CROSSFADE ─────────────────────────────────────────
+--  "active_matrix_surround_decoder"  Active Matrix Surround Decoder  (no properties)
+--  "pink_cinema"              Cinema Pink Noise           multi_channel_type(int,1-3), multi_channel_count(int,2-256)
+--  "crossfader"               Crossfader                  multi_channel_type(int,1-3), multi_channel_count(int,2-256)
+--
+-- ── AUDIO: SIGNAL PROCESSING ──────────────────────────────────────────
+--  "crossover"                Crossover                   n_bands(int,2-6), max_slope(int), multi_channel_type, multi_channel_count
+--  "delay"                    Delay                       n_taps(int,1-512), max_delay(float,0.001-60), delay_type(int,0-2), multi_channel_type, multi_channel_count
+--  "gain"                     Gain                        max_gain(int,-100-20), min_gain(int,-100-20), multi_channel_type, multi_channel_count
+--  "ramp"                     Gain Ramp                   multi_channel_type(int,1-3), multi_channel_count(int,2-256)
+--  "system_mute"              System Mute                 (no properties)
+--
+-- ── AUDIO: DYNAMICS ───────────────────────────────────────────────────
+--  "leveler"                  Automatic Gain Control      b_has_sidechain(bool), detector_time(float), multi_channel_type, multi_channel_count
+--  "compressor"               Compressor                  b_has_sidechain(bool), detector_time(float), multi_channel_type, multi_channel_count
+--  "expander"                 Expander                    b_has_sidechain(bool), detector_time(float), multi_channel_type, multi_channel_count
+--  "gate"                     Gate                        b_has_sidechain(bool), detector_time(float), multi_channel_type, multi_channel_count
+--  "limiter_peak"             Peak Limiter                b_has_sidechain(bool), detector_time(float), multi_channel_type, multi_channel_count
+--  "priority_ducker"          Priority Ducker             n_channels(int,1-512), detector_time(float)
+--  "ambient_compensator_continuous_2"  Continuous Ambient Compensator  subsample_factor(int), microphone_filter(bool)
+--  "ambient_compensator_gated_2"       Gated Ambient Compensator       microphone_filter(bool)
+--
+-- ── AUDIO: EFFECTS ────────────────────────────────────────────────────
+--  "effect_autopan"           Auto-Pan Effect             io_config(int,0-1)
+--  "effect_chorus"            Chorus Effect               io_config(int,0-2), max_delay(float)
+--  "effect_delay"             Delay Effect                io_config(int,0-2), max_delay(float,0.001-60)
+--  "effect_flange"            Flanger Effect              io_config(int,0-2), max_delay(float)
+--  "effect_pitch"             Pitch Shifter               io_config(int,0-2), max_delay(float,1-100ms)
+--  "effect_reverb"            Reverb Effect               io_config(int,0-1), reverb_type(int,0-1)
+--  "effect_tremolo"           Tremolo Effect              io_config(int,0-2)
+--
+-- ── AUDIO: EQUALIZERS AND FILTERS ─────────────────────────────────────
+--  "equalizer_parametric"     Parametric EQ               n_bands(int,1-32), bandwidth_q_factor(int,0-2), multi_channel_type, multi_channel_count
+--  "equalizer_parametric_flattop"  Flattop Parametric EQ  n_bands(int,1-32), multi_channel_type, multi_channel_count
+--  "equalizer_graphic"        Graphic EQ                  n_bands(int,6/11/16/31/61), multi_channel_type, multi_channel_count
+--  "equalizer_graphic_flattop" Flattop Graphic EQ         n_bands(int,6/11/16/31/61), multi_channel_type, multi_channel_count
+--  "equalizer_shelving_dual"  Dual-Shelf EQ               filter_slope(int,6/12), multi_channel_type, multi_channel_count
+--  "equalizer_shelving_high"  High-Shelf EQ               filter_slope(int,6/12), multi_channel_type, multi_channel_count
+--  "equalizer_shelving_low"   Low-Shelf EQ                filter_slope(int,6/12), multi_channel_type, multi_channel_count
+--  "filter_allpass"           All-Pass Filter             filter_order(int,1-2), multi_channel_type, multi_channel_count
+--  "filter_bandpass"          Band-Pass Filter            multi_channel_type, multi_channel_count
+--  "filter_bandstop"          Band-Stop Filter            multi_channel_type, multi_channel_count
+--  "filter_highpass"          High-Pass Filter            max_slope(int,12-96), multi_channel_type, multi_channel_count
+--  "filter_lowpass"           Low-Pass Filter             max_slope(int,12-96), multi_channel_type, multi_channel_count
+--  "filter_notch"             Notch Filter                multi_channel_type, multi_channel_count
+--  "filter_weighting"         Weighting Filter            type(int,1-2), multi_channel_type, multi_channel_count
+--  "filter_fir"               FIR Custom Filter [WARNING] n_taps(int,4-16384), multi_channel_type, multi_channel_count
+--  "filter_IIR"               IIR Custom Filter [WARNING] n_sections(int,1-256), multi_channel_type, multi_channel_count
+--  "filter_highpass_fir"      FIR High-Pass Filter        bandwidth(float), attenuation(int), phase_type(int,0-1), multi_channel_type, multi_channel_count
+--  "filter_lowpass_fir"       FIR Low-Pass Filter         bandwidth(float), attenuation(int), phase_type(int,0-1), multi_channel_type, multi_channel_count
+--  "feedback_canceler_notch"  Notch Feedback Controller   max_filter_count(int,8-32)
+--
+-- ── AUDIO: MIXERS AND MATRICES ────────────────────────────────────────
+--  "mixer"                    Matrix Mixer [WARNING: MAX 512x512]  n_inputs(int,1-512), n_outputs(int,1-512),
+--                                                                   n_stereo_inputs(int), n_stereo_outputs(int),
+--                                                                   n_cues(int,0-511), n_vca_groups(int,0-16)
+--  "delay_matrix"             Delay Matrix Mixer          n_inputs(int,1-512), n_outputs(int,1-512), max_delay(float), multi_channel_type
+--  "auto_mixer"               Gain-Sharing Auto Mic Mixer n_channels(int,2-512), output_choice(int,1-3)
+--  "auto_mixer_gated"         Gating Auto Mic Mixer (Legacy)  n_channels(int,2-512), output_choice(int,1-3)
+--  "auto_mixer_gating_adaptive" Gating Auto Mic Mixer     n_channels(int,2-512), output_choice(int,1-3)
+--  "room_combiner"            Room Combiner               n_rooms(int,2-256), n_walls(int,1-256), multi_channel_type(int,1-2), n_bgm(int,0-32)
+--  "router_with_output"       Router                      n_inputs(int,1-1024), n_outputs(int,1-1024), multi_channel_type, multi_channel_count
+--  "signal_presence"          Signal Presence             multi_channel_type(int,1-3), multi_channel_count(int,2-256)
+--
+-- ── AUDIO: METERS ─────────────────────────────────────────────────────
+--  "meter2"                   Level Meter                 meter_type(int,1-3), multi_channel_type, multi_channel_count
+--  "meter_LKFS"               LKFS Meter (BETA)           n_channels(int,1/2/3/5/7)
+--  "meter_SPL"                SPL/Leq Meter               meter_type(int,1-2), type(int,1-3), level_offset(int)
+--
+-- ── AUDIO: TEST AND MEASUREMENT ───────────────────────────────────────
+--  "pink"                     Pink Noise Generator        multi_channel_type, multi_channel_count
+--  "white"                    White Noise Generator       multi_channel_type, multi_channel_count
+--  "sine"                     Sine Generator              multi_channel_type, multi_channel_count
+--  "io_monitor"               IO Monitor                  (no properties)
+--  "responsalyzer"            Responsalyzer               n_bands(int), n_bins(int,512-65536)
+--  "rta_bandpass"             RTA Band-Pass               n_bands(int,11/31/61/121/241)
+--
+-- ── AUDIO: TIMECODE ───────────────────────────────────────────────────
+--  "linear_timecode_encoder"  SMPTE LTC Generator         (no properties)
+--  "linear_timecode_decoder"  SMPTE LTC Reader            (no properties)
+--
+-- ── CONTROL ───────────────────────────────────────────────────────────
+--  "sun"                      Astronomical Clock          (no properties)
+--  "blinker"                  Blinking LED                io_assignment(int,0=Core / 1=I/O Frame) [NOTE: only Core supported as embedded]
+--  "color_picker"             Color Picker                color_picker_size(int,160-512)
+--  "contact_list"             Contact List                (no properties)
+--  "custom_controls"          Custom Controls             See full reference below
+--
+--    CUSTOM CONTROLS - FULL REFERENCE
+--    (source: q-syshelp.qsc.com -> Developer Help -> Embedded Components)
+--
+--    custom_controls is the most flexible embedded component. It allows creating
+--    up to 10 independent control slots (1..10), each with its own type and count.
+--    It is the recommended way to store persistent internal values (e.g. secrets,
+--    tokens, state) without exposing extra controls to the user.
+--    See "STORING SECRETS" pattern in the runtime section at the end of this file.
+--
+--    Properties per slot (n = slot index 1..10):
+--      type_n          integer   Control type (see table below). Default: 0 (None)
+--      count_n         integer   Number of controls in this slot. Range: 1-256
+--      range_custom_n  boolean   Enable custom range. Default: false
+--      range_minimum_n integer   Minimum value (only if range_custom_n = true)
+--      range_maximum_n integer   Maximum value (only if range_custom_n = true)
+--
+--    Control type values and their runtime names:
+--    +-------+------------------------------+------------------+--------+---------------+
+--    | type  | Control Name                 | Control Name     | Custom | Custom        |
+--    | value | (QDS Label)                  | (runtime .name)  | Range? | Range Limits  |
+--    +-------+------------------------------+------------------+--------+---------------+
+--    |  0    | None                         | -                | No     |               |
+--    |  1    | Level fader w/taper (dB)     | fader.n          | No     | -100 to 20    |
+--    |  2    | Level knob (dB)              | level.n          | Yes    | -100 to 100   |
+--    |  3    | Frequency knob (Hz)          | frequency.n      | Yes    | 0.1 to 20000  |
+--    |  4    | Time knob (seconds)          | time.n           | Yes    | 0 to 86400    |
+--    |  5    | Generic float knob           | float.n          | Yes    | +-1000000000  |
+--    |  6    | Generic integer knob         | integer.n        | Yes    | +-16777216    |
+--    |  7    | Mute button                  | mute.n           | No     |               |
+--    |  8    | Toggle button                | toggle.n         | No     |               |
+--    |  9    | Trigger button               | trigger.n        | No     |               |
+--    | 10    | Percent knob                 | percent.n        | No     | 0 to 100      |
+--    | 11    | Position knob                | position.n       | No     | 0 to 1        |
+--    | 12    | Pan knob                     | pan.n            | No     | -1 to 1       |
+--    | 13    | Text edit                    | text.n           | No     |               |
+--    | 14    | Text display (read-only)     | text.display.n   | No     |               |
+--    | 15    | LED                          | led.n            | No     |               |
+--    | 16    | Meter                        | meter.n          | No     | -120 to 20    |
+--    | 17    | Momentary button             | momentary.n      | No     |               |
+--    | 18    | Distance knob (meters)       | distance.n       | Yes    | 0 to 999      |
+--    | 19    | Status display               | status.n         | No     |               |
+--    | 20    | Hexadecimal knob             | hexadecimal.n    | Yes    | 0-24 / 0xFFFF |
+--    | 21    | Time knob (alt)              | time.n           | Yes    | 0 to 86399    |
+--    +-------+------------------------------+------------------+--------+---------------+
+--
+--    NOTE: "n" in runtime names is the 1-based index within the slot count.
+--    Example: type_1=13, count_1=3 creates text.1, text.2, text.3
+--    Access: SecretStorage["text.1"].String = "value"
+--  "date_time"                Date/Time                   (no properties)
+--  "email"                    E-mailer                    (no properties)
+--  "event_log"                Event Log                   (no properties)
+--  "event_logger"             Event Logger                Args(int,0-16)
+--  "flip_flop"                Flip-Flop                   (no properties)
+--  "gps_info"                 GPS Info                    (no properties)
+--  "control_lfo"              LFO                         lfo_type(int,0-2)
+--  "pinpad_2"                 PIN Pad                     n_pins(int,0-16)
+--  "press_n_hold"             Press and Hold              (no properties)
+--  "selector"                 Selector                    num_sel(int,2-64)
+--  "uci_layer_controller"     UCI Layer Controller        uci(str), page(str), is_shared(bool)
+--  "uci_style_controller"     UCI Style Controller        uci(str)
+--  "stepper"                  Value Stepper               control_type(int,0/1/3), gain_mode(int,0-1), num_steps(int,3-100)
+--
+-- ── MONITORING ────────────────────────────────────────────────────────
+--  "ping"                     Ping                        (no properties)
+--  "snmp_query"               SNMP Query                  snmp_num_oid(int,1-16), snmp_version(int,0-1)
+--
+-- NOTE on multi_channel_type / multi_channel_count (common to many components):
+--   multi_channel_type: 1=Mono, 2=Stereo, 3=Multi-channel
+--   multi_channel_count: number of channels (only if multi_channel_type=3), range 2-256
+-- =====================================================================
+--]]
+function GetComponents(props)
+  local components = {}
+
+  -- Example 1: Matrix Mixer (most common in audio plugins)
+  table.insert(components, {
+    Name = "main_mixer",
+    Type = "mixer",
+    Properties = {
+      ["n_inputs"]  = 8,
+      ["n_outputs"] = 1,
+    }
+  })
+
+  -- Example 2: Signal presence detector (mono)
+  table.insert(components, {
+    Name = "signal_detector",
+    Type = "signal_presence",
+    Properties = {
+      ["multi_channel_type"] = 1,  -- 1=Mono
+    }
+  })
+
+  -- Example 3: Multichannel gain
+  -- table.insert(components, {
+  --   Name = "gain_control",
+  --   Type = "gain",
+  --   Properties = {
+  --     ["max_gain"]           = 20,
+  --     ["min_gain"]           = -100,
+  --     ["multi_channel_type"] = 1,
+  --   }
+  -- })
+
+  -- Example 4: Crossfader array (via loop with unique names)
+  -- At runtime, access via: XFader1["crossfade.to.B"].Boolean = true
+  -- for x = 1, (props["Channel Count"].Value) do
+  --   table.insert(components, {
+  --     Name = "XFader" .. x,
+  --     Type = "crossfader",
+  --     Properties = {
+  --       ["multi_channel_type"]  = 1,
+  --       ["multi_channel_count"] = 8,
+  --     }
+  --   })
+  -- end
+
+  return components
+end
