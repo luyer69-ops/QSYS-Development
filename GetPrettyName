@@ -1,0 +1,6 @@
+-- ============================================================
+-- NAME DISPLAYED WHEN DRAGGED INTO SCHEMATIC (required)
+-- ============================================================
+function GetPrettyName(props)
+  return PluginInfo.Name .. " v" .. PluginInfo.Version
+end
