@@ -1,0 +1,321 @@
+-- ============================================================
+-- RUNTIME LOGIC
+-- Only executed when the plugin is loaded into a Core or emulated.
+-- Keep this section as simple as possible.
+--
+-- ── CONTROL ACCESS AT RUNTIME ────────────────────────────────────────
+-- Controls defined in GetControls() are accessible via the global
+-- Controls table. Available properties:
+--
+--   Controls.ControlName.Value       -> Number (control position, 0.0-1.0 or per ControlUnit)
+--   Controls.ControlName.String      -> String (value as text)
+--   Controls.ControlName.Boolean     -> Boolean (true if Value > 0)
+--   Controls.ControlName.Position    -> Number (normalized position 0.0-1.0)
+--   Controls.ControlName.Color       -> Color string (e.g. "green", "#FF0000")
+--   Controls.ControlName.Legend      -> String (button text at runtime)
+--   Controls.ControlName.Choices     -> Table (ComboBox/ListBox options)
+--   Controls.ControlName.IsDisabled  -> Boolean (disable the control)
+--   Controls.ControlName.IsInvisible -> Boolean (hide the control)
+--   Controls.ControlName.RampTime    -> Number in seconds (ramp time)
+--   Controls.ControlName.EventHandler = function(ctrl) ... end
+--
+-- For controls with Count > 1 (arrays), access by index (1-based):
+--   Controls.ControlName[1].Value
+--   Controls.ControlName[2].Boolean
+--
+-- ── PROPERTY ACCESS AT RUNTIME ───────────────────────────────────────
+-- Properties defined in GetProperties() are accessible via the global
+-- Properties table (read-only at runtime):
+--
+--   Properties["Property Name"].Value  -> Current value (string/number/bool)
+--   Properties["Property Name"].Name   -> Property name
+--
+-- ── EMBEDDED COMPONENT ACCESS AT RUNTIME ─────────────────────────────
+-- Components defined in GetComponents() are registered as global
+-- variables and are accessible directly by name at runtime.
+--
+-- CASE 1 - Fixed name (single component):
+--   The name assigned in GetComponents() is directly a global variable.
+--   Access without _G, like any Lua variable:
+--
+--   main_mixer["input.1.gain"].Value = -10
+--   XFader1["crossfade.to.B"].Boolean = true
+--
+-- CASE 2 - Dynamic names (components created in a loop):
+--   When multiple components are created in GetComponents() by
+--   concatenating strings to the name (e.g. "XFader"..x), at runtime
+--   it is not possible to resolve that name as a direct variable.
+--   In that case _G is REQUIRED to build the name dynamically
+--   and collect them into a local table to work with:
+--
+--   local XFaders = {}
+--   for i = 1, 8 do
+--     table.insert(XFaders, _G["XFader" .. i])
+--   end
+--   XFaders[1]["crossfade.to.B"].Boolean = true
+--
+-- NOTE: Use Tools > View Component Controls Info in QDS to obtain
+--   the exact control names for each component.
+--
+-- ── TIMER ─────────────────────────────────────────────────────────────
+-- Q-SYS provides its own Timer object. Do NOT use native Lua time
+-- functions (os.time, etc.) as they do not work correctly on the Core.
+--
+-- IMPORTANT: Do NOT declare Timers with "local". The Lua garbage
+--     collector may remove them while still in use, silently stopping
+--     them. Always declare Timers in global scope.
+--
+-- METHOD 1 - Simple timer (CallAfter): executes a function ONCE
+-- after the specified delay. No :Stop() needed.
+--   Timer.CallAfter(function() ... end, seconds)
+--
+-- METHOD 2 - Named timer: repeats indefinitely until :Stop() is called.
+--   myTimer = Timer.New()              -- Create (global scope, no "local")
+--   myTimer.EventHandler = function()  -- Function to run on each cycle
+--     ...
+--   end
+--   myTimer:Start(seconds)             -- Start (accepts decimals, e.g. 0.5)
+--   myTimer:Stop()                     -- Stop
+--   myTimer:IsRunning()                -- Returns true if currently active
+--
+-- METHOD 3 - Timer.Now(): returns seconds since epoch.
+--   Useful for calculating elapsed time between two moments.
+--   NOTE: The value differs between Emulation mode (Windows) and Core mode.
+--
+-- ── DEBUG OUTPUT BEHAVIOR ────────────────────────────────────────────
+-- NOTE: The first time any EventHandler fires, Q-SYS Designer reprints
+--     the ENTIRE accumulated history in the Debug Output since script
+--     startup, and then appends the new event line with its real
+--     timestamp (offset by the time elapsed since startup).
+--     This does NOT indicate double execution of the code. It is
+--     normal behavior of the Q-SYS debug viewer.
+--
+-- ── CODE PIN BEHAVIOR ────────────────────────────────────────────────
+-- NOTE: The CODE PIN does NOT overwrite this block. The external code
+--     runs AFTER the code in this block, in the same runtime context.
+--     Execution order is:
+--
+--       1. All code in this "if Controls then" block
+--       2. All code received via the CODE PIN
+--
+-- WARNING - IMPORTANT CONSEQUENCES:
+--
+--     a) DIRECT CALLS AND INITIALIZATIONS:
+--        If this block executes a direct function call (e.g. fnc()),
+--        it will ALWAYS run with the original version, even if the
+--        CODE PIN redefines that function afterwards.
+--        Result: the initialization runs TWICE -- first with the
+--        original function, then with the redefined one from the CODE PIN.
+--        Avoid direct calls in this block if using the CODE PIN.
+--
+--     b) EVENT HANDLERS:
+--        If the CODE PIN redefines an EventHandler already defined here,
+--        the new definition OVERWRITES the previous one. Only the
+--        external handler will execute, since the redefinition happens
+--        before any user event arrives.
+--        This is the safest and most predictable use of the CODE PIN.
+--
+--     c) CODE PIN PERSISTENCE:
+--        Injected code persists in memory even if the pin is
+--        disconnected or execution is stopped and restarted.
+--        To clear it, explicitly send nil or an empty string ("")
+--        through the pin.
+-- ── QSC RECOMMENDED RUNTIME ARCHITECTURE ────────────────────────────
+-- Source: q-syshelp.qsc.com -> Reserved Functions -> Runtime
+--
+-- The following are common functions found in QSC-authored plugins.
+-- They are NOT required but represent QSC's recommended architecture
+-- pattern for communication plugins (TCP, Serial, etc.).
+-- For a working example see the TCPSocket example in the official docs.
+--
+-- SetupDebugPrint()
+--   Sets flags based on the "Debug Print" property selected before
+--   running. Controls which print() messages go to the debug window.
+--   Typically reads Properties["Debug Print"].Value and sets booleans
+--   such as bDebugTx, bDebugRx, bDebugFn, etc.
+--
+-- Initialization()
+--   Called once when the plugin starts. Used to initialize controls,
+--   set default values, create aliases for components and controls,
+--   and prepare the plugin state before any events arrive.
+--
+-- Connect()
+--   Sets flags or triggers other functions once the connection to the
+--   device has been established. Called from the socket Connected handler.
+--
+-- Disconnected()
+--   Resets flags or triggers other functions when the connection is
+--   disrupted. Called from the socket Closed/Error handler.
+--
+-- ClearVariables()
+--   Flushes controls, variables, tables and flags when the connection
+--   is disrupted or reset. Typically called from Disconnected().
+--
+-- GetDeviceInfo()
+--   Initial data exchange with the device after connection.
+--   Used to request static data (e.g. firmware version, serial number).
+--   Called from Connect() after the connection is established.
+--
+-- PollDevice()
+--   Requests data that needs to be polled periodically for changes.
+--   Called at regular intervals via a Timer to maintain connection
+--   health and verify the device is still reachable.
+--
+-- Send(cmd)
+--   Sends data over the socket. Centralizes all outgoing communication
+--   in one place, making it easy to add debug logging or pre-processing.
+--
+-- ParseResponse(data)
+--   Handles data received over the socket. Determines the context of
+--   the incoming data and dispatches to more specific handler functions.
+--   Called from the socket Data handler.
+--
+-- RECOMMENDED SKELETON FOR COMMUNICATION PLUGINS:
+--
+--   function SetupDebugPrint()
+--     bDebugTx = Properties["Debug Print"].Value == "Tx/Rx" or
+--                Properties["Debug Print"].Value == "Tx" or
+--                Properties["Debug Print"].Value == "All"
+--     bDebugRx = Properties["Debug Print"].Value == "Tx/Rx" or
+--                Properties["Debug Print"].Value == "Rx" or
+--                Properties["Debug Print"].Value == "All"
+--   end
+--
+--   function ClearVariables()
+--     Controls.ConnectionStatus.Value = 2  -- Fault
+--     Controls.ConnectionStatus.String = "Disconnected"
+--   end
+--
+--   function Disconnected()
+--     ClearVariables()
+--   end
+--
+--   function Connect()
+--     Controls.ConnectionStatus.Value = 0  -- OK
+--     Controls.ConnectionStatus.String = "Connected"
+--     GetDeviceInfo()
+--   end
+--
+--   function GetDeviceInfo()
+--     Send("GET /version\r\n")
+--   end
+--
+--   function PollDevice()
+--     Send("GET /status\r\n")
+--   end
+--
+--   function Send(cmd)
+--     if bDebugTx then print("Tx: " .. cmd) end
+--     sock:Write(cmd)
+--   end
+--
+--   function ParseResponse(data)
+--     if bDebugRx then print("Rx: " .. data) end
+--     -- dispatch to specific handlers based on data content
+--   end
+--
+--   function Initialization()
+--     SetupDebugPrint()
+--     ClearVariables()
+--     sock = TcpSocket.New()
+--     sock.EventHandler = function(s, evt, err)
+--       if evt == TcpSocket.Events.Connected then
+--         Connect()
+--       elseif evt == TcpSocket.Events.Data then
+--         ParseResponse(s:Read(s.BufferLength))
+--       elseif evt == TcpSocket.Events.Closed or
+--              evt == TcpSocket.Events.Error then
+--         Disconnected()
+--       end
+--     end
+--     sock:Connect(Controls.IPAddress.String,
+--                  Controls.Port.Value)
+--   end
+--
+--   Initialization()
+--
+-- ============================================================
+if Controls then
+
+  -- Example: basic EventHandler
+  Controls.SendButton.EventHandler = function(ctrl)
+    if ctrl.Boolean then
+      print("SendButton pressed")
+    end
+  end
+
+  -- Example: read and write control values
+  Controls.InputGain.EventHandler = function(ctrl)
+    print("Gain: " .. tostring(ctrl.Value) .. " dB")
+  end
+
+  -- Example: simple timer (single execution)
+  -- Timer.CallAfter(function()
+  --   print("Executed 2 seconds after startup")
+  -- end, 2)
+
+  -- Example: repeating timer (polling every 5 seconds)
+  -- tmrPoll = Timer.New()           -- No "local": global scope
+  -- tmrPoll.EventHandler = function()
+  --   print("Poll: " .. tostring(Timer.Now()))
+  -- end
+  -- tmrPoll:Start(5)
+
+  -- Example: assign options to a ComboBox at runtime
+  -- Controls.TextBox.Choices = { "Option A", "Option B", "Option C" }
+  -- Controls.TextBox.String  = "Option A"   -- Default selection
+
+  -- Example: embedded component access (direct name)
+  -- main_mixer["input.1.gain"].Value = -10
+  -- XFader1["crossfade.to.B"].Boolean = true
+
+  -- Example: embedded components created in a loop (via _G)
+  -- local XFaders = {}
+  -- for i = 1, 8 do
+  --   table.insert(XFaders, _G["XFader" .. i])
+  -- end
+  -- XFaders[1]["crossfade.to.B"].Boolean = true
+
+  -- ── STORING SECRETS PATTERN ───────────────────────────────────────
+  -- Source: q-syshelp.qsc.com -> Developer Help -> Storing Secrets in Plugins
+  --
+  -- Use case: store passwords, API keys or tokens persistently inside the plugin
+  -- without exposing them to the user through visible controls.
+  --
+  -- Best practice: store the secret in a custom_controls embedded component
+  -- (type_1 = 13 = Text Edit). Its value is:
+  --   - Retained as part of the design state across script restarts
+  --   - Only accessible by the plugin that embeds it (not visible externally)
+  --   - Not shown in any control pin
+  --
+  -- STEP 1: Add the storage component in GetComponents():
+  --   table.insert(components, {
+  --     Name = "SecretStorage",
+  --     Type = "custom_controls",
+  --     Properties = {
+  --       type_1  = 13,  -- Text Edit (type 13)
+  --       count_1 = 1    -- One slot -> control name: text.1
+  --                      -- Use count_1 = 2 for two secrets: text.1, text.2
+  --     }
+  --   })
+  --
+  -- STEP 2: Create an alias and use it in runtime:
+  --   MySecret = SecretStorage["text.1"]   -- alias for the storage control
+  --   MySecret.String = "the_secret_value" -- write
+  --   print(MySecret.String)               -- read
+  --
+  -- STEP 3: Obfuscate the input field after the user types the secret.
+  -- Use gsub to replace all characters with * in the visible control,
+  -- while the real value stays stored in SecretStorage:
+  --   Controls.SecretEntry.EventHandler = function(ctrl)
+  --     MySecret.String = ctrl.String          -- store the real value
+  --     ctrl.String = ctrl.String:gsub(".", "*") -- show only asterisks
+  --   end
+  --
+  -- STEP 4: On script start, show asterisks if a secret is already stored:
+  --   function Initialize()
+  --     Controls.SecretEntry.String = MySecret.String:gsub(".", "*")
+  --   end
+  --   Initialize()
+
+end
