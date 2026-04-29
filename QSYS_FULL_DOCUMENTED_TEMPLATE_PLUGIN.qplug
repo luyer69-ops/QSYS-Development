@@ -140,18 +140,82 @@ end
 
 
 -- ============================================================
+-- PAGE NAME HELPER FUNCTION
+-- ============================================================
+-- PURPOSE:
+--   Builds and returns the COMPLETE list of page names on every call,
+--   starting always from an empty table to avoid accumulation of
+--   duplicates across multiple calls from Q-SYS Designer.
+--
+-- WHY A HELPER FUNCTION IS NEEDED:
+--   Q-SYS Designer calls GetPages(), GetControls() and GetControlLayout()
+--   independently and multiple times. A global array like PageNames appears
+--   to be accessible from all functions, but any modification made inside
+--   GetPages() does NOT carry over to GetControls() or GetControlLayout().
+--   The only safe way to share a dynamic page list across all three functions
+--   is to use a helper that rebuilds it from scratch every time it is called.
+--   Source: q-syshelp.qsc.com -> Reserved Functions -> GetPages()
+--
+-- HOW TO USE:
+--   Call BuildPageNames(props) at the start of GetPages(), GetControls()
+--   and GetControlLayout() to get the current complete page list.
+--   Use the returned table as the authoritative page name source in each
+--   function -- do NOT rely on the global PageNames for dynamic pages.
+--
+-- HOW TO ADD CONDITIONAL PAGES:
+--   Add a boolean Property (e.g. "Show Advanced Page") in GetProperties().
+--   Then add a condition block here reading that property's value.
+--   The page will appear or disappear in the Designer UI automatically
+--   when the user toggles the property via RectifyProperties().
+--
+-- IMPORTANT: Always define the base (always-visible) pages first.
+--   Dynamic pages are appended after the base pages so the page_index
+--   values remain stable for the base pages regardless of dynamic state.
+-- ============================================================
+function BuildPageNames(props)
+  -- Start with a fresh local table on every call.
+  -- NEVER use table.insert on a persistent global here -- it would
+  -- accumulate duplicates each time Q-SYS calls this function.
+  local pages = { "Control", "Setup" }  -- base pages: always present
+
+  -- Example: conditionally add "Advanced" page based on a boolean Property.
+  -- The Property "Show Advanced Page" must be defined in GetProperties().
+  -- Uncomment and adapt the block below to add conditional pages:
+  --
+  -- if props["Show Advanced Page"].Value then
+  --   table.insert(pages, "Advanced")  -- appended after base pages
+  -- end
+
+  -- Return the complete, freshly built page list.
+  -- The caller (GetPages, GetControls, GetControlLayout) is responsible
+  -- for using this list as the source of truth for page names.
+  return pages
+end
+
+
+-- ============================================================
 -- PLUGIN PAGES (optional)
 -- Allows splitting the UI into tabs. Each entry requires { name = "..." }
--- NOTE: PageNames can be modified here to conditionally add pages based on
--- properties, but that change does NOT propagate to GetControls/GetControlLayout.
--- Those functions must rebuild the array from scratch.
+-- ============================================================
+-- NOTE: Do NOT modify the global PageNames array inside GetPages() to add
+-- dynamic pages -- changes do not propagate to GetControls/GetControlLayout.
+-- Use BuildPageNames(props) instead, which is called from all three functions.
 -- ============================================================
 function GetPages(props)
+  -- Rebuild the complete page list from scratch using the helper.
+  -- This ensures that any conditional pages based on properties are
+  -- included, and that the list is always consistent with what
+  -- GetControls() and GetControlLayout() will also see.
+  local allPages = BuildPageNames(props)
+
+  -- Convert the plain string array into the table format required
+  -- by Q-SYS: each entry must be a table with a "name" key.
   local pages = {}
-  for ix, _ in ipairs(PageNames) do
-    table.insert(pages, { name = PageNames[ix] })
+  for _, name in ipairs(allPages) do
+    table.insert(pages, { name = name })  -- { name = "Control" }, etc.
   end
-  return pages
+
+  return pages  -- Q-SYS uses this to render the tab bar in the plugin UI
 end
 
 
@@ -673,7 +737,14 @@ end
 function GetControls(props)
   local ctrls = {}
 
-  -- Momentary Button
+  -- Rebuild the complete page list using the helper function.
+  -- GetControls() may need to know which pages exist when adding
+  -- controls conditionally based on the active page configuration.
+  -- Even if not used directly here, calling BuildPageNames() ensures
+  -- consistency with GetPages() and GetControlLayout().
+  -- local allPages = BuildPageNames(props)  -- uncomment if needed
+
+
   table.insert(ctrls, {
     Name        = "SendButton",
     ControlType = "Button",
@@ -1039,7 +1110,21 @@ end
 function GetControlLayout(props)
   local layout   = {}
   local graphics = {}
-  local currentPage = PageNames[props["page_index"].Value]
+
+  -- Rebuild the complete page list using the helper function.
+  -- This is REQUIRED when using dynamic/conditional pages, because
+  -- the global PageNames only contains the base pages. Any pages added
+  -- conditionally via BuildPageNames() must be visible here too so that
+  -- the currentPage comparison below works correctly for all pages.
+  -- If no dynamic pages are used, this still works correctly because
+  -- BuildPageNames() always returns at least the base pages.
+  local allPages   = BuildPageNames(props)
+
+  -- Resolve the current page name from the numeric page_index property.
+  -- props["page_index"].Value is a 1-based integer set by Q-SYS Designer
+  -- to indicate which page tab the user is currently viewing.
+  -- We use it to index into allPages so we get the correct page name string.
+  local currentPage = allPages[props["page_index"].Value]
 
   -- "code" control (always hidden visually, Style = "None")
   -- Only added if the "Enable Code Pin" property is active.
@@ -1682,4 +1767,5 @@ if Controls then
   --     Controls.SecretEntry.String = MySecret.String:gsub(".", "*")
   --   end
   --   Initialize()
+
 end
