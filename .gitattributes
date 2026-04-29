@@ -1,1 +1,3 @@
-*.qplug linguistic-language=lua
+# Source files
+# ============
+*.qplug   linguist-language=lua
